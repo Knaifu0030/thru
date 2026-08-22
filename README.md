@@ -52,7 +52,9 @@ Admin routes require `X-Forge-Admin-Key`:
 
 Send `Prefer: respond-async` to a skill route for HTTP 202 and poll `GET /runs/{run_id}`. Synchronous REST calls automatically fall back to 202 before the gateway deadline.
 
-The baked public workflows are `example-reference`, `httpbin-document`, and `cern-history`; each passed 13 consecutive fresh Webcmd-session runs on 2026-08-22. Rejected candidates (Quotes to Scrape, Books to Scrape, and WorldTimeAPI) were not shipped because live expectations or connectivity failed.
+CLI exit codes are stable: `0` success/healed success, `1` portal or internal failure, `2` usage or invalid input, and `3` `needs_human` or declined approval. Narration is written to stderr; envelopes remain JSON on stdout.
+
+The baked public workflows are `example-reference`, `httpbin-document`, and `cern-history`; each passed 10 warm runs in one Webcmd Session plus three independent fresh-session runs on 2026-08-22. Rejected candidates (Quotes to Scrape, Books to Scrape, and WorldTimeAPI) remain documented alternates and are not shipped.
 
 ## Production links
 

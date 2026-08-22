@@ -26,3 +26,17 @@ export class MockPortal {
   }
 }
 
+export function renderBrowserFixture(scenario: string): string {
+  const pages: Record<string, string> = {
+    iframe: `<h1>Iframe fixture</h1><iframe title="Results frame" srcdoc='<table id="results"><tr><th>Name</th><th>Status</th></tr><tr><td>Alpha</td><td>Ready</td></tr></table>'></iframe>`,
+    newtab: `<h1>New tab fixture</h1><button id="open-result" onclick="window.open('/mock/fixture?scenario=result','_blank')">Open Result</button>`,
+    result: `<h1>Result window</h1><pre id="result-json">{"status":"ready","source":"new-tab"}</pre>`,
+    dynamic: `<h1>Dynamic controls</h1><label for="category">Category</label><select id="category"><option>Alpha</option><option>Beta</option></select><div id="chosen"></div><script>document.getElementById('category').addEventListener('change',e=>document.getElementById('chosen').textContent=e.target.value)</script>`,
+    empty: `<h1>Empty result fixture</h1><div id="empty-result"></div>`,
+    login: `<h1>Account login</h1><label>Password<input type="password"></label>`,
+    popup: `<div role="dialog"><button aria-label="Close popup" onclick="this.parentElement.remove()">Close</button></div><main><h1>Popup fixture</h1><button id="continue">Continue</button></main>`,
+  };
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Forge ${escapeHtml(scenario)} fixture</title></head><body>${pages[scenario] ?? `<h1>Unknown fixture</h1>`}</body></html>`;
+}
+
+function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character); }

@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { validateArtifact } from "./skill-validation.js";
 import type { SkillArtifact } from "./types.js";
+import { enforceSensitivity } from "./execution-policy.js";
 
 export class SkillRegistry extends EventEmitter {
   readonly #directory: string;
@@ -20,21 +21,20 @@ export class SkillRegistry extends EventEmitter {
     await mkdir(this.#directory, { recursive: true });
     await mkdir(this.#invalidDirectory, { recursive: true });
     this.#skills.clear();
-    const files = (await readdir(this.#directory)).filter((name) => name.endsWith(".skill.json"));
+    const entries = await readdir(this.#directory);
+    for (const temp of entries.filter((name) => name.endsWith(".tmp"))) await rename(path.join(this.#directory, temp), path.join(this.#invalidDirectory, `${Date.now()}-${temp}`));
+    const files = entries.filter((name) => name.endsWith(".skill.json"));
     for (const file of files) {
       const source = path.join(this.#directory, file);
       try {
-        const parsed: unknown = JSON.parse(await readFile(source, "utf8"));
-        const validation = validateArtifact(parsed);
-        if (!validation.ok) throw new Error(validation.errors.join("; "));
-        if (this.#skills.has(validation.skill.skill.id)) throw new Error("duplicate skill id");
-        const safe = enforceSensitivity(validation.skill);
+        const safe = await this.#readValid(source);
+        if (this.#skills.has(safe.skill.id)) { await this.#quarantine(source, `duplicate-${file}`); continue; }
         this.#skills.set(safe.skill.id, safe);
       } catch {
         const backup = `${source}.bak`;
         try {
-          const restored: unknown = JSON.parse(await readFile(backup, "utf8")); const valid = validateArtifact(restored); if (!valid.ok) throw new Error("invalid backup"); await copyFile(backup, source); this.#skills.set(valid.skill.skill.id, enforceSensitivity(valid.skill));
-        } catch { await rename(source, path.join(this.#invalidDirectory, `${Date.now()}-${file}`)); }
+          const restored = await this.#readValid(backup); if (this.#skills.has(restored.skill.id)) throw new Error("duplicate backup id"); await copyFile(backup, source); this.#skills.set(restored.skill.id, restored);
+        } catch { await this.#quarantine(source, file); }
       }
     }
   }
@@ -80,17 +80,7 @@ export class SkillRegistry extends EventEmitter {
     await this.save(safe);
     return safe;
   }
-}
 
-function enforceSensitivity(skill: SkillArtifact): SkillArtifact {
-  const markers = /(password|login|otp|captcha|payment|pay|delete|send|submit)/i;
-  const steps = skill.workflow.steps.map((step) => ({
-    ...step,
-    sensitive: step.sensitive || markers.test(`${step.action} ${step.target_description}`),
-  }));
-  return {
-    ...skill,
-    skill: { ...skill.skill, sensitive: steps.some((step) => step.sensitive) },
-    workflow: { ...skill.workflow, steps },
-  };
+  async #readValid(file: string): Promise<SkillArtifact> { const parsed: unknown = JSON.parse(await readFile(file, "utf8")); const validation = validateArtifact(parsed); if (!validation.ok) throw new Error(validation.errors.join("; ")); return enforceSensitivity(validation.skill); }
+  async #quarantine(source: string, name: string): Promise<void> { await rename(source, path.join(this.#invalidDirectory, `${Date.now()}-${randomUUID()}-${name}`)); }
 }

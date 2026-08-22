@@ -9,6 +9,8 @@ import { modelFromEnvironment } from "./forge-model.js";
 import { SkillRegistry } from "./registry.js";
 import { refreshWebcmdDiagnostic } from "./webcmd-diagnostic.js";
 
+class UsageError extends Error {}
+
 const [command, ...args] = process.argv.slice(2);
 const config = loadConfig();
 const registry = new SkillRegistry(config.skillsDirectory);
@@ -25,20 +27,20 @@ try {
       const id = required(args.shift(), "Usage: forge run <skill-id> [key=value ...]");
       const inputs = Object.fromEntries(args.map((pair) => {
         const index = pair.indexOf("=");
-        if (index < 1) throw new Error(`Input must be key=value: ${pair}`);
+        if (index < 1) throw new UsageError(`Input must be key=value: ${pair}`);
         return [pair.slice(0, index), pair.slice(index + 1)];
       }));
       const result = await executor.runSkill(id, inputs, { surface: "local_human", timeBudgetMs: 90_000, narrationSink: (line) => console.error(line), humanGate: async (gate) => {
         const terminal = createInterface({ input: process.stdin, output: process.stderr });
         try {
-          if (gate.kind === "manual") { await terminal.question("Complete the sensitive browser step manually, then press Enter to re-check: "); return true; }
+          if (gate.kind === "manual") { console.error("Login, CAPTCHA, and OTP automation are outside the Forge MVP. No sensitive value was requested."); return false; }
           return (await terminal.question(`Sensitive action: ${gate.reason}. Type exactly APPROVE to continue: `)) === "APPROVE";
         } finally { terminal.close(); }
       } });
       if (!result) throw new Error(`Skill not found: ${id}`);
       for (const line of result.narration ?? []) console.error(line);
       console.log(JSON.stringify(result, null, 2));
-      process.exitCode = result.status === "portal_error" ? 1 : 0;
+      process.exitCode = result.status === "invalid_input" ? 2 : result.status === "needs_human" ? 3 : result.status === "portal_error" ? 1 : 0;
       break;
     }
     case "export": {
@@ -71,14 +73,14 @@ try {
     }
     default:
       console.log("Forge commands: list | run | new | import | export | doctor");
-      process.exitCode = command ? 1 : 0;
+      process.exitCode = command ? 2 : 0;
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Forge command failed.");
-  process.exitCode = 1;
+  process.exitCode = error instanceof UsageError ? 2 : 1;
 }
 
 function required(value: string | undefined, message: string): string {
-  if (!value) throw new Error(message);
+  if (!value) throw new UsageError(message);
   return value;
 }

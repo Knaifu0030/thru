@@ -8,7 +8,8 @@
 - Mock v3 re-forged the changed button only and preserved the previous step in capped history.
 - REST and MCP use the same `runSkill` entry point; MCP rebuilds its tool list from the live registry per request.
 - REST sensitive execution returns `needs_human`; CLI approval requires exactly `APPROVE`.
-- Public qualifications: `example-reference` 13/13, `httpbin-document` 13/13, and `cern-history` 13/13 consecutive fresh sessions.
+- Public qualifications: `example-reference`, `httpbin-document`, and `cern-history` each passed 10 same-session warm runs plus 3 independent fresh-session runs with schema-valid outputs. Evidence is in `qualification-report.json`.
+- Local suite: 26 tests cover REST/MCP, healing, rollback, iframe tables, new tabs, dynamic controls, empty results, popup dismissal, runtime safety, registry recovery, Forge proposals, queue order, and CLI exit codes.
 - `npm audit --omit=dev`: zero known vulnerabilities.
 
 ## Production acceptance still requires owner infrastructure

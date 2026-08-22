@@ -12,6 +12,7 @@ import { MockPortal } from "./mock-portal.js";
 import { SkillRegistry } from "./registry.js";
 import { ForgeEngine } from "./forge-engine.js";
 import { RunManager } from "./run-manager.js";
+import type { JsonSchema, SkillArtifact, WorkflowStep } from "./types.js";
 
 const allowedOrigin = "https://forge.example.vercel.app";
 let server: Server;
@@ -94,6 +95,12 @@ test("unknown routes return a structured 404", async () => {
   assert.equal(response.status, 404);
   assert.equal(body.error.code, "not_found");
   assert.ok(body.error.requestId.length > 0);
+});
+
+test("malformed and oversized requests fail safely without stack traces", async () => {
+  const malformed = await fetch(`${baseUrl}/registry/import`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: "{" }); const malformedText = await malformed.text(); assert.equal(malformed.status, 400); assert.doesNotMatch(malformedText, /\bat\s+\w+|node:internal/);
+  const oversized = await fetch(`${baseUrl}/registry/import`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: JSON.stringify({ value: "x".repeat(1_048_576) }) }); const oversizedText = await oversized.text(); assert.equal(oversized.status, 413); assert.doesNotMatch(oversizedText, /\bat\s+\w+|node:internal/);
+  const oddMethod = await fetch(`${baseUrl}/skills/hell-check`, { method: "PATCH", body: "noise" }); assert.equal(oddMethod.status, 404);
 });
 
 test("registry exposes installed skills", async () => {
@@ -223,3 +230,34 @@ test("two-phase Forge keeps drafts unregistered until confirmation and hot-regis
   const confirmed = await fetch(`${baseUrl}/forge/${proposal.proposal_id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: "{}" }); assert.equal(confirmed.status, 201); assert.ok(registry.get(proposal.artifact.skill.id));
   const tools = await fetch(`${baseUrl}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" }, body: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/list", params: {} }) }); assert.match(await tools.text(), new RegExp(`forge_${proposal.artifact.skill.id.replaceAll("-", "_")}`));
 });
+
+test("browser execution resolves iframe tables by headers", async () => {
+  await installFixtureSkill("iframe-table", [{ id: "s1", action: "navigate", target_description: "Iframe table fixture", url: "{site}/mock/fixture?scenario=iframe", expect: { contains: ["Iframe fixture"], not_contains: ["captcha"] }, timeout_ms: 8_000, sensitive: false }, { id: "s2", action: "extract", target_description: "Results table", selector_primary: "#results", selector_fallbacks: ["table"], extraction: { strategy: "header_map", map_to: "outputs", selector: "#results" }, expect: { element_present: "#results", not_contains: ["access denied"] }, timeout_ms: 8_000, sensitive: false }], { type: "object", properties: { items: { type: "array", items: { type: "object", properties: {}, additionalProperties: true } } }, required: ["items"] });
+  const body = await (await fetch(`${baseUrl}/skills/iframe-table`)).json() as { status: string; data: { items: Array<Record<string, string>> } }; assert.equal(body.status, "success"); assert.deepEqual(body.data.items[0], { Name: "Alpha", Status: "Ready" });
+});
+
+test("browser execution adopts a new tab and extracts JSON", async () => {
+  await installFixtureSkill("new-tab-json", [{ id: "s1", action: "navigate", target_description: "New tab fixture", url: "{site}/mock/fixture?scenario=newtab", expect: { contains: ["New tab fixture"], not_contains: ["captcha"] }, timeout_ms: 8_000, sensitive: false }, { id: "s2", action: "click", target_description: "Open result button", selector_primary: "#open-result", selector_fallbacks: ["text:Open Result"], expect: { element_present: "#result-json", not_contains: ["access denied"] }, timeout_ms: 8_000, sensitive: false }, { id: "s3", action: "extract", target_description: "New tab JSON", selector_primary: "#result-json", selector_fallbacks: ["pre"], extraction: { strategy: "json_element", map_to: "outputs", selector: "#result-json" }, expect: { contains: ["new-tab"], not_contains: ["error"] }, timeout_ms: 8_000, sensitive: false }], { type: "object", properties: { status: { type: "string" }, source: { type: "string" } }, required: ["status", "source"] });
+  const body = await (await fetch(`${baseUrl}/skills/new-tab-json`)).json() as { status: string; data: { source: string } }; assert.equal(body.status, "success"); assert.equal(body.data.source, "new-tab");
+});
+
+test("a plausible repair is rolled back when its successor expectation fails", async () => {
+  const installed = await installFixtureSkill("rollback-repair", [{ id: "s1", action: "navigate", target_description: "Certificate fixture", url: "{site}/mock/hell-portal", expect: { contains: ["Certificate Status"], not_contains: ["captcha"] }, timeout_ms: 8_000, sensitive: false }, { id: "s2", action: "click", target_description: "Check Status", selector_primary: "#broken-button", selector_fallbacks: ["#check-status"], expect: { element_present: "#result-json", not_contains: ["captcha"] }, timeout_ms: 8_000, sensitive: false }, { id: "s3", action: "extract", target_description: "Impossible successor", selector_primary: "#missing-result", selector_fallbacks: [], extraction: { strategy: "json_element", map_to: "outputs", selector: "#missing-result" }, expect: { contains: ["never"], not_contains: ["captcha"] }, timeout_ms: 1_000, sensitive: false }], { type: "object", properties: { status: { type: "string" } } });
+  const result = await (await fetch(`${baseUrl}/skills/rollback-repair`)).json() as { status: string; healing: unknown[] }; assert.equal(result.status, "portal_error"); assert.ok(result.healing.length > 0); assert.equal(registry.get("rollback-repair")?.skill.version, installed.skill.version); assert.equal(registry.get("rollback-repair")?.history.length, 0);
+});
+
+test("dynamic selects, empty extraction, popup dismissal, and runtime login detection are safe", async () => {
+  await installFixtureSkill("dynamic-select", [{ id: "s1", action: "navigate", target_description: "Dynamic fixture", url: "{site}/mock/fixture?scenario=dynamic", expect: { contains: ["Dynamic controls"], not_contains: ["captcha"] }, timeout_ms: 8_000, sensitive: false }, { id: "s2", action: "fill", target_description: "Category", selector_primary: "#category", selector_fallbacks: ["label:Category"], value_from: "inputs.category", expect: { field_value_equals: "inputs.category", not_contains: ["password"] }, timeout_ms: 8_000, sensitive: false }, { id: "s3", action: "extract", target_description: "Chosen category", selector_primary: "#chosen", selector_fallbacks: ["body"], extraction: { strategy: "header_map", map_to: "outputs", selector: "#chosen" }, expect: { contains: ["Beta"], not_contains: ["error"] }, timeout_ms: 8_000, sensitive: false }], { type: "object", properties: { text: { type: "string" }, empty: { type: "boolean" } }, required: ["text", "empty"] }, { type: "object", properties: { category: { type: "string" } }, required: ["category"] });
+  const dynamic = await (await fetch(`${baseUrl}/skills/dynamic-select?category=Beta`)).json() as { status: string; healing?: unknown; steps?: unknown }; assert.equal(dynamic.status, "success", JSON.stringify(dynamic));
+  await installFixtureSkill("empty-result", [{ id: "s1", action: "navigate", target_description: "Empty fixture", url: "{site}/mock/fixture?scenario=empty", expect: { contains: ["Empty result fixture"], not_contains: ["captcha"] }, timeout_ms: 8_000, sensitive: false }, { id: "s2", action: "extract", target_description: "Empty result", selector_primary: "#empty-result", selector_fallbacks: ["body"], extraction: { strategy: "header_map", map_to: "outputs", selector: "#empty-result" }, expect: { contains: ["Empty result fixture"], not_contains: ["error"] }, timeout_ms: 8_000, sensitive: false }], { type: "object", properties: { text: { type: "string" }, empty: { type: "boolean" } }, required: ["text", "empty"] });
+  const empty = await (await fetch(`${baseUrl}/skills/empty-result`)).json() as { status: string; data: { empty: boolean } }; assert.equal(empty.status, "success", JSON.stringify(empty)); assert.equal(empty.data.empty, true);
+  await installFixtureSkill("popup-dismiss", [{ id: "s1", action: "navigate", target_description: "Popup fixture", url: "{site}/mock/fixture?scenario=popup", expect: { contains: ["Popup fixture"], not_contains: ["captcha"] }, timeout_ms: 8_000, sensitive: false }, { id: "s2", action: "extract", target_description: "Popup-free content", selector_primary: "main", selector_fallbacks: ["body"], extraction: { strategy: "header_map", map_to: "outputs", selector: "main" }, expect: { contains: ["Popup fixture"], not_contains: ["Close popup"] }, timeout_ms: 8_000, sensitive: false }], { type: "object", properties: { text: { type: "string" }, empty: { type: "boolean" } }, required: ["text", "empty"] });
+  assert.equal((await (await fetch(`${baseUrl}/skills/popup-dismiss`)).json() as { status: string }).status, "success");
+  await installFixtureSkill("runtime-login", [{ id: "s1", action: "navigate", target_description: "Account page", url: "{site}/mock/fixture?scenario=login", expect: { contains: ["Account login"], not_contains: ["access denied"] }, timeout_ms: 8_000, sensitive: false }, { id: "s2", action: "extract", target_description: "Account content", selector_primary: "body", selector_fallbacks: ["main"], extraction: { strategy: "header_map", map_to: "outputs", selector: "body" }, expect: { element_present: "body", not_contains: ["error"] }, timeout_ms: 8_000, sensitive: false }], { type: "object", properties: { text: { type: "string" } } });
+  const login = await (await fetch(`${baseUrl}/skills/runtime-login`)).json() as { status: string }; assert.equal(login.status, "needs_human"); assert.equal(registry.get("runtime-login")?.skill.sensitive, true);
+});
+
+async function installFixtureSkill(id: string, steps: WorkflowStep[], outputs: JsonSchema, inputs: JsonSchema = { type: "object", properties: {}, required: [] }): Promise<SkillArtifact> {
+  const base = JSON.parse(await readFile(path.resolve("skills/hell-check.skill.json"), "utf8")) as SkillArtifact;
+  return registry.import({ ...base, skill: { ...base.skill, id, name: id, version: 1, sensitive: false }, contract: { inputs, outputs }, workflow: { engine: "webcmd", steps }, vitals: { runs: 0, successes: 0, healed_runs: 0, avg_ms: 0, last_run: null, last_heal: null }, history: [] });
+}

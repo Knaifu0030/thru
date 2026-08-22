@@ -1,0 +1,9 @@
+{
+  "qualified_at": "2026-08-22T06:29:58.849Z",
+  "webcmd_sessions": "10 warm runs in one session plus 3 independent fresh sessions",
+  "skills": [
+    { "id": "example-reference", "passed": 13, "total": 13, "warm_passed": 10, "fresh_passed": 3, "avg_ms": 719, "max_ms": 1048, "failures": [], "alternate": "quotes-by-tag (rejected during reconnaissance: expectation instability)" },
+    { "id": "httpbin-document", "passed": 13, "total": 13, "warm_passed": 10, "fresh_passed": 3, "avg_ms": 2604, "max_ms": 5324, "failures": [], "alternate": "books-catalogue (rejected during reconnaissance: extraction instability)" },
+    { "id": "cern-history", "passed": 13, "total": 13, "warm_passed": 10, "fresh_passed": 3, "avg_ms": 728, "max_ms": 847, "failures": [], "alternate": "world-time (rejected during reconnaissance: connection resets)" }
+  ]
+}

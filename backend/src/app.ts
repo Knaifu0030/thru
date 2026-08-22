@@ -4,7 +4,7 @@ import type { AppConfig } from "./config.js";
 import type { SkillExecutor } from "./executor.js";
 import type { ForgeEngine } from "./forge-engine.js";
 import { handleMcpRequest } from "./mcp.js";
-import type { MockPortal } from "./mock-portal.js";
+import { renderBrowserFixture, type MockPortal } from "./mock-portal.js";
 import type { SkillRegistry } from "./registry.js";
 import type { RunManager } from "./run-manager.js";
 import { getWebcmdDiagnostic } from "./webcmd-diagnostic.js";
@@ -97,6 +97,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: AppConfi
     const html = dependencies.mockPortal.render();
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Length": Buffer.byteLength(html) }); res.end(html); return;
   }
+  if (req.method === "GET" && url.pathname === "/mock/fixture") { const html = renderBrowserFixture(url.searchParams.get("scenario") ?? ""); res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Length": Buffer.byteLength(html) }); res.end(html); return; }
   if (req.method === "POST" && url.pathname === "/admin/sabotage") {
     if (!hasAdminAccess(req, config)) throw new HttpError(401, "admin_required", "A valid admin key is required.");
     const body = await readJson(req) as { variant?: unknown };
@@ -116,7 +117,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: AppConfi
   if (req.method === "POST" && url.pathname === "/registry/import") {
     if (!hasAdminAccess(req, config)) throw new HttpError(401, "admin_required", "A valid admin key is required.");
     try { const skill = await dependencies.registry.import(await readJson(req)); json(res, 201, skill); }
-    catch (error) { throw new HttpError(400, "invalid_artifact", "Import rejected.", (error as Error).message); }
+    catch (error) { if (error instanceof HttpError) throw error; throw new HttpError(400, "invalid_artifact", "Import rejected.", (error as Error).message); }
     return;
   }
 
