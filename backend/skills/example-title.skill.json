@@ -1,0 +1,94 @@
+{
+  "forge_spec": 1,
+  "skill": {
+    "id": "example-title",
+    "name": "Read Example Domain",
+    "description": "Reads the heading from Example Domain through a live Webcmd browser session.",
+    "site": {
+      "domain": "example.com",
+      "display": "Example Domain"
+    },
+    "version": 1,
+    "forged_at": "2026-08-22T09:00:00+05:30",
+    "author": {
+      "name": "Forge",
+      "id": "local"
+    },
+    "tags": [
+      "demo",
+      "read-only"
+    ],
+    "sensitive": false
+  },
+  "contract": {
+    "inputs": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "outputs": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "render_hint": "keyvalue"
+  },
+  "workflow": {
+    "engine": "webcmd",
+    "steps": [
+      {
+        "id": "s1",
+        "action": "navigate",
+        "target_description": "Example Domain home page",
+        "url": "{site}",
+        "expect": {
+          "contains": [
+            "Example Domain"
+          ],
+          "not_contains": [
+            "maintenance",
+            "login"
+          ]
+        },
+        "timeout_ms": 15000,
+        "sensitive": false
+      },
+      {
+        "id": "s2",
+        "action": "extract",
+        "target_description": "Main page heading",
+        "selector_primary": "h1",
+        "selector_fallbacks": [
+          "main h1"
+        ],
+        "extraction": {
+          "strategy": "header_map",
+          "map_to": "outputs"
+        },
+        "expect": {
+          "contains": [
+            "Example Domain"
+          ],
+          "not_contains": [
+            "error",
+            "captcha"
+          ]
+        },
+        "timeout_ms": 8000,
+        "sensitive": false
+      }
+    ]
+  },
+  "vitals": {
+    "runs": 0,
+    "successes": 0,
+    "healed_runs": 0,
+    "avg_ms": 0,
+    "last_run": null,
+    "last_heal": null
+  },
+  "history": []
+}

@@ -1,5 +1,8 @@
 node_modules/
 backend/dist/
+backend/skills/*.bak
+backend/skills/*.tmp
+backend/skills/_invalid/
 .env
 .env.*
 !.env.example
@@ -12,4 +15,3 @@ gate0-evidence/
 output/
 .playwright-cli/
 .webcmd/
-

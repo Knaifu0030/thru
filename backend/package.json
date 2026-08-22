@@ -4,21 +4,28 @@
   "private": true,
   "description": "Forge production deploy skeleton",
   "type": "module",
+  "bin": {
+    "forge": "dist/cli.js"
+  },
   "engines": {
     "node": ">=20.6.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
+    "forge": "node dist/cli.js",
     "test": "npm run build && node --test dist/**/*.test.js",
     "check": "npm run build && npm test"
   },
   "dependencies": {
-    "@agentrhq/webcmd": "0.7.4"
+    "@agentrhq/webcmd": "0.7.4",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "ajv": "8.20.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "20.19.11",
     "typescript": "5.9.2"
   }
 }
-

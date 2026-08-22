@@ -10,5 +10,7 @@ Docs
 deploy
 gate0-evidence
 recordings
+backend/skills/*.bak
+backend/skills/*.tmp
+backend/skills/_invalid
 *.log
-

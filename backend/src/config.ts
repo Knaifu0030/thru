@@ -1,7 +1,11 @@
+import path from "node:path";
+
 export interface AppConfig {
   readonly port: number;
   readonly allowedOrigins: ReadonlySet<string>;
   readonly version: string;
+  readonly skillsDirectory: string;
+  readonly adminKey: string | null;
 }
 
 const DEFAULT_ORIGINS = [
@@ -39,6 +43,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: parsePort(env.PORT),
     allowedOrigins: parseOrigins(env.FORGE_ALLOWED_ORIGINS),
     version: env.npm_package_version ?? "0.1.0",
+    skillsDirectory: path.resolve(env.FORGE_SKILLS_DIR ?? "skills"),
+    adminKey: env.FORGE_ADMIN_KEY?.trim() || null,
   };
 }
-

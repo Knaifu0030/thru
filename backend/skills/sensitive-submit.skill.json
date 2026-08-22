@@ -1,0 +1,29 @@
+{
+  "forge_spec": 1,
+  "skill": {
+    "id": "sensitive-submit",
+    "name": "Submit a Protected Request",
+    "description": "Demonstrates Forge refusing a sensitive submission over REST or MCP.",
+    "site": { "domain": "forge-internal", "display": "Demoland Protected Service" },
+    "version": 1,
+    "forged_at": "2026-08-22T09:00:00+05:30",
+    "author": { "name": "Forge", "id": "local" },
+    "tags": ["demo", "safety"],
+    "sensitive": true
+  },
+  "contract": {
+    "inputs": { "type": "object", "properties": { "certificate": { "type": "string", "pattern": "^[A-Z0-9-]{4,12}$", "description": "Request reference" } }, "required": ["certificate"] },
+    "outputs": { "type": "object", "properties": { "submitted": { "type": "boolean" } } },
+    "render_hint": "keyvalue"
+  },
+  "workflow": {
+    "engine": "webcmd",
+    "steps": [
+      { "id": "s1", "action": "navigate", "target_description": "Protected request page", "url": "{site}/mock/hell-portal", "expect": { "contains": ["Certificate Status"], "not_contains": ["maintenance", "login"] }, "timeout_ms": 15000, "sensitive": false },
+      { "id": "s2", "action": "click", "target_description": "Submit request with side effects", "selector_primary": "#submit-request", "selector_fallbacks": [], "expect": { "contains": ["submitted"], "not_contains": ["error"] }, "timeout_ms": 10000, "sensitive": true }
+    ]
+  },
+  "vitals": { "runs": 0, "successes": 0, "healed_runs": 0, "avg_ms": 0, "last_run": null, "last_heal": null },
+  "history": []
+}
+

@@ -189,6 +189,25 @@ footer {
   font-size: 0.8125rem;
 }
 
+.marketplace { padding: 48px 0; border-bottom: 1px solid var(--ink); }
+.marketplace-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; }
+.marketplace h2 { margin: 0; font-size: 1.5rem; }
+.marketplace-heading p { color: var(--muted); }
+.skill { padding: 28px 0; border-top: 1px solid var(--line); }
+.skill:first-child { border-top-color: var(--ink); }
+.skill header { display: flex; justify-content: space-between; gap: 24px; }
+.skill h3 { margin: 0 0 8px; font-size: 1.125rem; }
+.skill p { margin: 0; color: var(--muted); }
+.skill form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-top: 20px; }
+.skill label { display: grid; gap: 6px; color: var(--muted); font-size: 0.8125rem; }
+.skill input { min-width: 220px; border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; background: var(--bg); color: var(--ink); }
+.skill button { border: 0; border-radius: 7px; padding: 11px 16px; background: var(--primary); color: white; font-weight: 700; cursor: pointer; }
+.skill button:disabled { opacity: 0.55; cursor: wait; }
+.skill input:focus-visible, .skill button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.skill pre { max-height: 320px; margin: 18px 0 0; overflow: auto; padding: 16px; background: var(--surface); border-radius: 7px; white-space: pre-wrap; }
+.skill details { margin-top: 14px; }
+.skill summary { cursor: pointer; color: var(--primary-dark); font-weight: 650; }
+
 #retry {
   border: 0;
   border-radius: 7px;
@@ -208,9 +227,9 @@ footer {
   h1 { font-size: clamp(2.75rem, 14vw, 4.5rem); }
   .thesis { flex-direction: column; }
   .surfaces { justify-content: flex-start; flex-direction: column; }
+  .marketplace-heading, .skill header { align-items: flex-start; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
-
