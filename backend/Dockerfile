@@ -12,6 +12,7 @@ FROM node:20.19.5-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     PORT=8080 \
     WEBCMD_WINDOW=background \
+    DISPLAY=:99 \
     CLOAKBROWSER_CACHE_DIR=/home/node/.cloakbrowser
 
 WORKDIR /app
@@ -30,4 +31,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x720x24 -nolisten tcp & until [ -S /tmp/.X11-unix/X99 ]; do sleep 0.1; done; exec node dist/server.js"]

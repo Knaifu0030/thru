@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export interface WebcmdDiagnostic {
   readonly status: "ready" | "degraded";
@@ -18,9 +20,8 @@ let current: WebcmdDiagnostic = {
 };
 
 async function run(args: readonly string[], timeout: number): Promise<string> {
-  const command = process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : "webcmd";
-  const commandArgs = process.platform === "win32" ? ["/d", "/s", "/c", "webcmd", ...args] : [...args];
-  const result = await execFileAsync(command, commandArgs, {
+  const cli = path.resolve("node_modules/@agentrhq/webcmd/dist/src/main.js");
+  const result = await execFileAsync(process.execPath, [cli, ...args], {
     timeout,
     windowsHide: true,
     maxBuffer: 256 * 1024,
@@ -39,8 +40,17 @@ export async function refreshWebcmdDiagnostic(): Promise<WebcmdDiagnostic> {
     current = { status: "ready", version, doctor: "pending", checkedAt };
 
     try {
-      const raw = await run(["doctor", "-f", "json"], 15_000);
-      const report = JSON.parse(raw) as { ok?: boolean };
+      let report: { ok?: boolean } | null = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          report = JSON.parse(await run(["doctor", "-f", "json"], 45_000)) as { ok?: boolean };
+          break;
+        } catch (error) {
+          if (attempt === 1) throw error;
+          await delay(5_000);
+        }
+      }
+      if (!report) throw new Error("Webcmd doctor returned no report.");
       current = {
         status: report.ok === false ? "degraded" : "ready",
         version,

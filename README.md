@@ -59,7 +59,7 @@ The baked public workflows are `example-reference`, `httpbin-document`, and `cer
 ## Production links
 
 - Marketplace: _set after the first Vercel production deployment_
-- API base: _set after the first Azure Container Apps deployment_
+- API base: https://forge-backend.mangosmoke-65ea4a06.centralindia.azurecontainerapps.io
 
 Deployment and verification instructions are in [deploy/GATE_0.md](deploy/GATE_0.md). Product and architecture specifications are under [Docs](Docs/README.md).
 
