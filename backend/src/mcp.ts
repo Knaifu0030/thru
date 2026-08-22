@@ -12,16 +12,16 @@ export async function handleMcpRequest(
   registry: SkillRegistry,
   executor: SkillExecutor,
 ): Promise<void> {
-  const server = new McpServer({ name: "forge", version: "0.1.0" });
+  const server = new McpServer({ name: "thru", version: "0.1.0" });
   const skills = registry.list();
   if (skills.length === 0) {
-    server.registerTool("forge_help", {
-      description: "Explains Forge when no website skills are installed.",
+    server.registerTool("thru_help", {
+      description: "Explains THRU when no website skills are installed.",
       inputSchema: z.object({}),
-    }, async () => ({ content: [{ type: "text", text: "Forge has no skills yet. Forge or import a skill, then list tools again." }] }));
+    }, async () => ({ content: [{ type: "text", text: "THRU has no skills yet. Teach or import a skill, then list tools again." }] }));
   }
   for (const skill of skills) {
-    server.registerTool(`forge_${skill.skill.id.replaceAll("-", "_")}`, {
+    server.registerTool(`thru_${skill.skill.id.replaceAll("-", "_")}`, {
       title: skill.skill.name,
       description: skill.skill.description,
       inputSchema: schemaToZod(skill.contract.inputs) as ZodType<Record<string, unknown>>,

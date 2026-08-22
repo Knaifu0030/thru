@@ -1,6 +1,6 @@
-# 07 — EDGE CASE REGISTRY (Forge Edition)
+# 07 — EDGE CASE REGISTRY (THRU Edition)
 
-> Acceptance criteria for the coding agent. 🛡 = safety-critical (never ship without) · 🎯 = demo-critical. Cases carried over from the Sarkar-Proof registry keep their behaviors; new Forge-specific surfaces (Gateway, Marketplace, MCP, import/export) add sections F–I.
+> Acceptance criteria for the coding agent. 🛡 = safety-critical (never ship without) · 🎯 = demo-critical. Cases carried over from the Sarkar-Proof registry keep their behaviors; new THRU-specific surfaces (Gateway, Marketplace, MCP, import/export) add sections F–I.
 >
 > ⚠️ **See also `12_DEPLOYMENT.md` §7 for cases 63–70** — Azure/Vercel production hosting edge cases (scale-to-zero, CORS, secrets in public repo, container restarts). Read those before Prompt A; they're as demo-critical as anything below.
 
@@ -20,8 +20,8 @@
 | 7 🎯 | Primary selector gone | Rung 2: fallbacks → text-sim ≥0.8 → label-proximity; learn fix; version bump |
 | 8 | Element invisible/covered | Visibility check → scroll-into-view → overlay dismissal (#9) → rung 2 |
 | 9 🎯 | Popup/cookie banner blocks | Dismissal heuristic: close-affordances INSIDE overlay only (✕/Close/Skip/No thanks); never overlay CTAs; unsure → gate |
-| 10 | Dynamic IDs per session | Forging prefers stable attrs (name/label/aria/placeholder); flag ID-only selectors weak at forge time |
-| 11 | Iframes | Record frame path at forge; re-resolve by URL/title, never index |
+| 10 | Dynamic IDs per session | Teaching prefers stable attrs (name/label/aria/placeholder); flag ID-only selectors weak at teach time |
+| 11 | Iframes | Record frame path at teach; re-resolve by URL/title, never index |
 | 12 🎯 | Result opens new tab | Adopt newest tab if URL/title matches expect; close after extract |
 | 13 | Lazy-load/infinite scroll | Scroll-and-settle: scroll, 500ms, check growth, max 5 |
 | 14 | Legacy table-layout HTML | Extraction by header-map, never nth-child |
@@ -56,7 +56,7 @@
 |---|---|---|
 | 32 🎯 | Relocation finds wrong-but-plausible element | <0.8 similarity → never guess → rung 3; sensitive page → gate regardless (interlock rule 2) |
 | 33 | Relocated fix still fails step expect | Roll back, never persist, escalate rung 3 (interlock 4) |
-| 34 🎯 | Rung-3 exceeds 45s | Abort re-forge → gate with partial findings |
+| 34 🎯 | Rung-3 exceeds 45s | Abort re-teach → gate with partial findings |
 | 35 | Two drifts in one run | Ladder per-step re-entrant; 90s global budget; both narrated |
 | 36 | Corrupted skill JSON | Validate on load → quarantine to `skills/_invalid/`, marketplace shows nothing broken; `.bak` restore path offered |
 | 37 🎯 | Mock-site cache serves stale variant in finale | no-store meta + hard reload + `--fresh` flag; rehearse sequence 3× |
@@ -66,24 +66,24 @@
 |---|---|---|
 | 38 🎯 | Two API calls arrive concurrently | MVP queue (one browser at a time): second gets `{queued: 1}` and waits (long-poll) or 202+retry hint; NEVER two browsers fighting |
 | 39 | Call to nonexistent skill | 404 with `available_skills` list (agent-friendly) |
-| 40 | Skill forged while server running | Hot route registration; no restart; `/registry` reflects within one poll |
+| 40 | Skill created while server running | Hot route registration; no restart; `/registry` reflects within one poll |
 | 41 | Caller sends extra/unknown params | Ignore unknowns; validate knowns; echo warnings in envelope |
 | 42 | Long-running skill vs HTTP timeout | Respond within 60s: either envelope, or 202 + `run_id` and `GET /runs/{id}` (build the simplest that works; document which) |
-| 43 🛡 | Port 7431 already taken | Fail loudly with the fix (`--port`); never silently bind elsewhere (breaks every printed curl) |
+| 43 🛡 | Port 8080 already taken | Fail loudly with the fix (`PORT=<free-port>`); never silently bind elsewhere without also updating `VITE_THRU_API_BASE` (it would break every printed curl and frontend request) |
 
 ## G. Gateway (MCP) — new
 | # | Case | Required behavior |
 |---|---|---|
-| 44 🎯 | Client connects before any skill exists | Empty tool list + one built-in `forge_help` tool describing the system (agent discovers what Forge IS) |
-| 45 🎯 | Skill forged mid-session | Tool-list update notification; if client caches, next list call shows it — demo the propagation either way |
+| 44 🎯 | Client connects before any skill exists | Empty tool list + one built-in `thru_help` tool describing the system (agent discovers what THRU IS) |
+| 45 🎯 | Skill created mid-session | Tool-list update notification; if client caches, next list call shows it — demo the propagation either way |
 | 46 | Tool called with schema-invalid args | MCP error with the validation message; no browser launch (#27) |
-| 47 | Envelope too verbose for model context | Tool result = compact envelope (status, data, one-line healing note); full trail via `forge_run_details` tool |
+| 47 | Envelope too verbose for model context | Tool result = compact envelope (status, data, one-line healing note); full trail via `thru_run_details` tool |
 | 48 🛡 | MCP client tries a gated skill | `needs_human` as a normal tool RESULT (not protocol error) so the agent can relay instructions to its human |
 
 ## H. Marketplace UI — new
 | # | Case | Required behavior |
 |---|---|---|
-| 49 🎯 | Registry changes while page open | 2s poll redraw; "forging…" stub card animates in — the growth heartbeat |
+| 49 🎯 | Registry changes while page open | 2.5s poll refreshes changed registry data; the teaching card transitions into the completed skill — the growth heartbeat |
 | 50 | Skill with huge/nested output | render_hint governs; fallback keyvalue with collapse; never wall-of-JSON in Use tab |
 | 51 | Form for gated skill | Runs locally fine (human present); card wears 🔒; API/Agent tabs show needs_human note |
 | 52 🎯 | Projector rendering | Cards legible at 1080p; test font sizes; demo dataset ≤6 cards so the shelf reads in one glance |
@@ -100,8 +100,8 @@
 ## J. Demo-Day Human Factors 🎯
 | # | Case | Required behavior |
 |---|---|---|
-| 58 🎯 | Live site down at demo time | Decision tree in `09` §4 — swap to recon alternate or recorded segment; mock-site beats run regardless (localhost can't be down) |
+| 58 🎯 | Live site down at demo time | Decision tree in `09` §4 — swap to a recon alternate or recorded segment. The mock-site beats remain available while the deployed backend is healthy. |
 | 59 🎯 | Notification mid-demo | DND on, chat apps quit (checklist) |
 | 60 🎯 | Typo under pressure | demo_cheatsheet.txt with exact commands; shell history pre-seeded |
-| 61 | Judge: "forge MY site right now" | Offer as encore after scripted demo; pick simple public page; frame: "forging is exploratory — watch it think" (sets expectation that slow ≠ broken) |
+| 61 | Judge: "teach MY site right now" | Offer as encore after scripted demo; pick simple public page; frame: "teaching is exploratory — watch it think" (sets expectation that slow ≠ broken) |
 | 62 🎯 | External MCP client misbehaves live | Recorded MCP segment as fallback; know your client's reconnect quirk in advance |

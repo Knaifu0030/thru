@@ -13,7 +13,7 @@ $ApiBase = $ApiBase.TrimEnd('/')
 $FrontendOrigin = $FrontendOrigin.TrimEnd('/')
 
 $health = Invoke-RestMethod -Uri "$ApiBase/health" -Method Get
-if ($health.service -ne 'forge-backend') { throw 'Unexpected health response.' }
+if ($health.service -ne 'thru-backend') { throw 'Unexpected health response.' }
 
 $preflight = Invoke-WebRequest -UseBasicParsing -Uri "$ApiBase/hello" -Method Options -Headers @{
   Origin = $FrontendOrigin

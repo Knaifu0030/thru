@@ -3,11 +3,11 @@
   "skill": {
     "id": "sensitive-submit",
     "name": "Submit a Protected Request",
-    "description": "Demonstrates Forge refusing a sensitive submission over REST or MCP.",
-    "site": { "domain": "forge-internal", "display": "Demoland Protected Service" },
+    "description": "Demonstrates THRU refusing a sensitive submission over REST or MCP.",
+    "site": { "domain": "thru-internal", "display": "Demoland Protected Service" },
     "version": 1,
     "forged_at": "2026-08-22T09:00:00+05:30",
-    "author": { "name": "Forge", "id": "local" },
+    "author": { "name": "THRU", "id": "local" },
     "tags": ["demo", "safety"],
     "sensitive": true
   },

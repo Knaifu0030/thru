@@ -1,8 +1,8 @@
-# Forge
+# THRU
 
-Forge turns a learned website workflow into one portable Skill: a button for a human, a typed REST endpoint for a developer, and an MCP tool for an AI agent.
+THRU turns a learned website workflow into one portable Skill: a button for a human, a typed REST endpoint for a developer, and an MCP tool for an AI agent.
 
-The backend now uses one real Webcmd browser path for mock and public skills. It includes step evidence, bounded healing, human gates, an asynchronous one-browser queue, two-phase forging, optional Azure OpenAI structured proposals with deterministic fallback, REST/MCP/CLI parity, crash-safe registry writes, and persistent healing history.
+The backend now uses one real Webcmd browser path for mock and public skills. It includes step evidence, bounded healing, human gates, an asynchronous one-browser queue, two-phase teaching, optional Azure OpenAI structured proposals with deterministic fallback, REST/MCP/CLI parity, crash-safe registry writes, and persistent healing history.
 
 ## Local quickstart
 
@@ -16,21 +16,30 @@ npm test
 npm start
 ```
 
-In another terminal, serve the frontend on an allowed origin:
+In another terminal, install and run the Vite frontend on an allowed origin:
 
 ```powershell
-npx --yes serve@14 frontend -l 3000
+cd frontend
+npm ci
+npm run dev
 ```
 
-Open `http://localhost:3000`. The page should report that the Forge deployment is online and show live backend/Webcmd status.
+Open `http://localhost:3000`. The page should report that the THRU deployment is online and show live backend/Webcmd status.
+
+For a production build:
+
+```powershell
+cd frontend
+npm run build
+```
 
 ## Functional checks
 
 ```powershell
 cd backend
-npm run forge -- list
-npm run forge -- run hell-check certificate=DEMO-1234
-npm run forge -- run example-title
+npm run thru -- list
+npm run thru -- run hell-check certificate=DEMO-1234
+npm run thru -- run example-title
 ```
 
 REST:
@@ -40,13 +49,13 @@ curl "http://localhost:8080/skills/hell-check?certificate=DEMO-1234"
 curl -X POST "http://localhost:8080/skills/sensitive-submit" -H "Content-Type: application/json" -d '{"certificate":"DEMO-1234"}'
 ```
 
-The second call returns `needs_human` without executing its sensitive step. MCP Streamable HTTP is served at `/mcp`; installed skills appear as `forge_<skill_id>` tools and return the same envelope as REST and CLI.
+The second call returns `needs_human` without executing its sensitive step. MCP Streamable HTTP is served at `/mcp`; installed skills appear as `thru_<skill_id>` tools and return the same envelope as REST and CLI.
 
-Admin routes require `X-Forge-Admin-Key`:
+Admin routes require `X-THRU-Admin-Key`:
 
-- `POST /forge` with `{ "goal_text", "url", "sample_inputs?" }` creates a 15-minute unconfirmed proposal
-- `POST /forge/{proposal_id}` confirms an optional edited `{ "artifact" }`
-- `DELETE /forge/{proposal_id}` discards a proposal
+- `POST /teach` with `{ "goal_text", "url", "sample_inputs?" }` creates a 15-minute unconfirmed proposal
+- `POST /teach/{proposal_id}` confirms an optional edited `{ "artifact" }`
+- `DELETE /teach/{proposal_id}` discards a proposal
 - `POST /registry/import` with a skill artifact
 - `POST /admin/sabotage` with `{ "variant": "v1" | "v2" | "v3" | "reset" }`
 
@@ -59,10 +68,10 @@ The baked public workflows are `example-reference`, `httpbin-document`, and `cer
 ## Production links
 
 - Marketplace: _set after the first Vercel production deployment_
-- API base: https://forge-backend.mangosmoke-65ea4a06.centralindia.azurecontainerapps.io
+- API base: https://thru-backend.mangosmoke-65ea4a06.centralindia.azurecontainerapps.io
 
-Deployment and verification instructions are in [deploy/GATE_0.md](deploy/GATE_0.md). Product and architecture specifications are under [Docs](Docs/README.md).
+Deployment and verification instructions are in [deploy/GATE_0.md](deploy/GATE_0.md). Product and architecture specifications are under [Docs](Docs/README.md), and current limitations are tracked in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 ## Security
 
-Secrets belong in Azure Container Apps secret references, never in source or frontend configuration. Configure Azure model assistance with `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, and `AZURE_OPENAI_API_VERSION`. Model output is never saved before Forge artifact validation and explicit confirmation.
+Secrets belong in Azure Container Apps secret references, never in source or frontend configuration. Configure Azure model assistance with `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, and `AZURE_OPENAI_API_VERSION`. Model output is never saved before THRU artifact validation and explicit confirmation.

@@ -22,4 +22,4 @@ Import the `thru` repository as a second Vercel project and set:
 - Production branch: `main`
 - Environment: `VITE_THRU_API_BASE=https://forge-backend.mangosmoke-65ea4a06.centralindia.azurecontainerapps.io`
 
-After the first production deployment, add the exact Vercel origin to `FORGE_ALLOWED_ORIGINS` on the Azure Container App. Do not use a wildcard or add preview origins to production.
+After the first production deployment, add the exact Vercel origin to `THRU_ALLOWED_ORIGINS` on the Azure Container App. Do not use a wildcard or add preview origins to production.

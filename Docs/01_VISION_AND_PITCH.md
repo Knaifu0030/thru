@@ -1,7 +1,7 @@
 # 01 — VISION & PITCH (YC-Grade)
 
 ## One-liner
-**Forge turns any website into a skill any AI agent can use — taught by demonstration, shared through a marketplace, self-healing when sites change.**
+**THRU turns any website into a skill any AI agent can use — taught by demonstration, shared through a marketplace, self-healing when sites change.**
 
 ## The Problem
 
@@ -20,15 +20,15 @@ A learned browser workflow is not code — it's **knowledge**. And knowledge wan
 - It should be **usable by anyone** — human, program, or AI — once acquired by one.
 - It should be **self-repairing**, because the thing it describes (a website) constantly changes.
 
-Nobody has built the system where web-workflow knowledge is forged once, shared like an artifact, consumed on every surface, and kept alive automatically. That's Forge.
+Nobody has built the system where web-workflow knowledge is created once, shared like an artifact, consumed on every surface, and kept alive automatically. That's THRU.
 
 ## The Product (three faces, one system)
 
-**① The Forge — supply.** Point it at a URL with a plain-English goal. The agent explores (powered by webcmd's self-learning browser infrastructure), narrates what it learns, asks when unsure, and produces a **Skill**: name, description, typed inputs/outputs, learned workflow inside. Forging feels like teaching an intern, not writing a script.
+**① Teach — supply.** Point THRU at a URL with a plain-English goal. The agent explores (powered by webcmd's self-learning browser infrastructure), narrates what it learns, asks when unsure, and produces a **Skill**: name, description, typed inputs/outputs, learned workflow inside. Teaching feels like onboarding a capable operator, not writing a script.
 
 **② The Marketplace — the shelf.** Every skill is a card: what it does, which site, live stats (runs, success rate, last self-heal), and three tabs — **Use** (a form + button for humans), **API** (copy-paste curl for developers), **Agent** (the MCP tool for AIs). One artifact, three audiences, zero translation. Browse, search, try, import.
 
-**③ The Gateway — demand, and the core innovation.** One MCP endpoint. Any agent that connects gains *every skill in the marketplace as callable tools* — and every newly forged skill propagates to all connected agents instantly. The same gateway speaks REST, so "turn any website into an API" is just the marketplace viewed through curl. **One connection, and your agent can use the web like a human.**
+**③ The Gateway — demand, and the core innovation.** One MCP endpoint. Any agent that connects gains *every skill in the marketplace as callable tools* — and every newly created skill propagates to all connected agents instantly. The same gateway speaks REST, so "turn any website into an API" is just the marketplace viewed through curl. **One connection, and your agent can use the web like a human.**
 
 **The immune system:** skills verify every step when they run; when a website changes, a healing ladder (retry → relocate elements by meaning → re-explore the broken step) repairs the skill and writes the fix back. Marketplace cards wear "self-healed 2h ago" badges. Skills are alive.
 
@@ -37,30 +37,30 @@ Nobody has built the system where web-workflow knowledge is forged once, shared 
 ## Why Now
 
 - MCP is becoming the USB port of the agent world — a standard way to hand tools to any model. A skill marketplace exposed over MCP was not possible to distribute two years ago; now it's one URL.
-- Self-learning browser infrastructure (webcmd) just made "explore once, reuse as a command" a primitive. Forge is the platform that primitive was waiting for.
+- Self-learning browser infrastructure (webcmd) just made "explore once, reuse as a command" a primitive. THRU is the platform that primitive was waiting for.
 - Agent adoption crossed from demos to deployment; the bottleneck moved from reasoning to *actuation*. Hands are the scarce resource. We sell hands.
 
 ## Why Us / Why This Wins
 
 - **Local-first**: skills run in your browser with your sessions. Data never leaves. For logged-in, personal, or government workflows this isn't a preference — it's the requirement cloud competitors (Parse.bot, Browsable, Browse AI) structurally can't meet.
 - **Self-healing as default**: competitors' endpoints break silently when sites change; ours re-learn. The maintenance cost that kills scraper products is our headline feature.
-- **Multi-surface from one artifact**: others ship an API. We ship the same skill as button + API + AI tool, which means every forged skill serves three markets at once.
-- **Network effects in the artifact**: every skill forged makes the marketplace more valuable to every connected agent. Supply compounds; the moat is the accumulated, living skill library — knowledge that stays repaired.
+- **Multi-surface from one artifact**: others ship an API. We ship the same skill as button + API + AI tool, which means every created skill serves three markets at once.
+- **Network effects in the artifact**: every skill created makes the marketplace more valuable to every connected agent. Supply compounds; the moat is the accumulated, living skill library — knowledge that stays repaired.
 
 ## Market (who pays, honestly)
 
 Beachhead: **AI-agent builders** — teams shipping agents that need to act on API-less websites. They currently burn eng-months on brittle browser code. We're one MCP URL. (This is also exactly webcmd's audience — aligned incentives for partnership.)
 Second: **developers & SMBs** replacing scraper maintenance and portal-heavy back-office chores.
-Third (consume-only): **non-technical users** pressing buttons on skills others forged — the accessibility surface, not the revenue engine, until the library is deep.
+Third (consume-only): **non-technical users** pressing buttons on skills others created — the accessibility surface, not the revenue engine, until the library is deep.
 
 ## Business Model (v1 hypothesis)
 
-Free local core (forge + run your own skills). Paid: hosted Gateway (teams share a skill library; agents connect with an API key), usage-metered skill calls, and eventually a revenue-shared marketplace where skill authors earn per call — the App Store economics, applied to web capabilities. (Detail in `11_ROADMAP_AND_BUSINESS.md`.)
+Free local core (teach + run your own skills). Paid: hosted Gateway (teams share a skill library; agents connect with an API key), usage-metered skill calls, and eventually a revenue-shared marketplace where skill authors earn per call — the App Store economics, applied to web capabilities. (Detail in `11_ROADMAP_AND_BUSINESS.md`.)
 
 ## The Demo That Proves It (90 seconds)
 
-Empty marketplace → forge a skill live on a real site → the card appears → press its button (human) → curl it (developer) → connect a *separate* agent to the Gateway and watch it use the skill (AI) → then vandalize the website live and watch the skill heal while a curl loop prints `200 → healing → 200`. Taught, not programmed. Shared, not siloed. Alive, not brittle.
+Empty marketplace → teach a skill live on a real site → the card appears → press its button (human) → curl it (developer) → connect a *separate* agent to the Gateway and watch it use the skill (AI) → then vandalize the website live and watch the skill heal while a curl loop prints `200 → healing → 200`. Taught, not programmed. Shared, not siloed. Alive, not brittle.
 
 ## The Sentence to Leave In the Room
 
-**"Every agent can think. Almost none can act on the real web. Forge is where agents get their hands."**
+**"Every agent can think. Almost none can act on the real web. THRU is where agents get their hands."**

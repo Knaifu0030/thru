@@ -25,7 +25,7 @@ export class SkillExecutor {
     const validation = validateInputs(skill, rawInputs);
     if (!validation.ok) return envelope(skill, "invalid_input", null, [], null, started, validation.errors);
     const sensitiveStep = skill.workflow.steps.find((step) => step.sensitive);
-    if (sensitiveStep && context.surface !== "local_human") return envelope(skill, "needs_human", null, [], { reason: sensitiveStep.target_description, how: `Run locally: forge run ${id}; a human must approve this step.` }, started, validation.warnings);
+    if (sensitiveStep && context.surface !== "local_human") return envelope(skill, "needs_human", null, [], { reason: sensitiveStep.target_description, how: `Run locally: thru run ${id}; a human must approve this step.` }, started, validation.warnings);
     if (sensitiveStep) {
       const manual = isManualGate(sensitiveStep);
       const approved = await context.humanGate?.({ kind: manual ? "manual" : "approval", step: sensitiveStep, reason: sensitiveStep.target_description, ...(manual ? {} : { approvalWord: "APPROVE" as const }) });
@@ -47,7 +47,7 @@ export class SkillExecutor {
     const duration = Math.max(1, Math.round(performance.now() - started));
     updated = updateVitals(updated, duration, finalExecution.status === "success" || finalExecution.status === "healed_success", finalExecution.healing[0] ?? null);
     await this.#registry.save(updated);
-    return { ...envelope(updated, finalExecution.status, finalExecution.data, finalExecution.healing, finalExecution.needsHuman ? { reason: finalExecution.needsHuman, how: `Run locally: forge run ${id}; a human must complete this step.` } : null, started, validation.warnings, finalExecution.narration), timing_ms: duration, steps: finalExecution.steps };
+    return { ...envelope(updated, finalExecution.status, finalExecution.data, finalExecution.healing, finalExecution.needsHuman ? { reason: finalExecution.needsHuman, how: `Run locally: thru run ${id}; a human must complete this step.` } : null, started, validation.warnings, finalExecution.narration), timing_ms: duration, steps: finalExecution.steps };
   }
 }
 

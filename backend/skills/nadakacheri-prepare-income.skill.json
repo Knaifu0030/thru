@@ -4,7 +4,7 @@
     "id": "nadakacheri-prepare-income",
     "name": "Prepare Demo Income Certificate",
     "description": "Prepares a fictional income-certificate application package on THRU's internal Nadakacheri demo portal.",
-    "site": { "domain": "forge-internal", "display": "Fictional Nadakacheri Demo Portal" },
+    "site": { "domain": "thru-internal", "display": "Fictional Nadakacheri Demo Portal" },
     "version": 1,
     "forged_at": "2026-08-22T10:00:00+05:30",
     "author": { "name": "THRU", "id": "local" },

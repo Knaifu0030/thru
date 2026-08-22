@@ -112,11 +112,11 @@ async function route(req: IncomingMessage, res: ServerResponse, config: AppConfi
   if (req.method === "POST" && (url.pathname === "/teach" || url.pathname === "/forge")) {
     if (!hasAdminAccess(req, config)) throw new HttpError(401, "admin_required", "A valid admin key is required.");
     try { json(res, 201, await dependencies.forgeEngine.propose(await readJson(req) as { goal_text: string; url: string; sample_inputs?: Record<string, unknown> })); }
-    catch (error) { throw new HttpError(400, "forge_proposal_failed", "THRU could not produce a safe proposal.", (error as Error).message); }
+    catch (error) { throw new HttpError(400, "teach_proposal_failed", "THRU could not produce a safe proposal.", (error as Error).message); }
     return;
   }
   const proposalMatch = /^\/(?:teach|forge)\/([0-9a-f-]+)$/.exec(url.pathname);
-  if (proposalMatch && req.method === "POST") { if (!hasAdminAccess(req, config)) throw new HttpError(401, "admin_required", "A valid admin key is required."); const body = await readJson(req) as { artifact?: unknown }; try { const skill = await dependencies.forgeEngine.confirm(proposalMatch[1] ?? "", body.artifact); json(res, 201, { status: "forged", skill }); } catch (error) { throw new HttpError(400, "forge_confirmation_failed", (error as Error).message); } return; }
+  if (proposalMatch && req.method === "POST") { if (!hasAdminAccess(req, config)) throw new HttpError(401, "admin_required", "A valid admin key is required."); const body = await readJson(req) as { artifact?: unknown }; try { const skill = await dependencies.forgeEngine.confirm(proposalMatch[1] ?? "", body.artifact); json(res, 201, { status: "created", skill }); } catch (error) { throw new HttpError(400, "teach_confirmation_failed", (error as Error).message); } return; }
   if (proposalMatch && req.method === "DELETE") { if (!hasAdminAccess(req, config)) throw new HttpError(401, "admin_required", "A valid admin key is required."); json(res, dependencies.forgeEngine.discard(proposalMatch[1] ?? "") ? 200 : 404, { status: "discarded" }); return; }
   if (req.method === "POST" && url.pathname === "/registry/import") {
     if (!hasAdminAccess(req, config)) throw new HttpError(401, "admin_required", "A valid admin key is required.");

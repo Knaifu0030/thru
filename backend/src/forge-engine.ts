@@ -1,22 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { inspectWithWebcmd, type PageObservation } from "./webcmd-runner.js";
-import type { ForgeModel } from "./forge-model.js";
+import type { THRUModel } from "./forge-model.js";
 import type { SkillRegistry } from "./registry.js";
 import { validateArtifact } from "./skill-validation.js";
 import type { JsonSchema, SkillArtifact, WorkflowStep } from "./types.js";
 import { enforceSensitivity } from "./execution-policy.js";
 
-export interface ForgeRequest { readonly goal_text: string; readonly url: string; readonly sample_inputs?: Record<string, unknown> }
+export interface THRURequest { readonly goal_text: string; readonly url: string; readonly sample_inputs?: Record<string, unknown> }
 interface Proposal { readonly id: string; readonly artifact: SkillArtifact; readonly narration: string[]; readonly questions: string[]; readonly expiresAt: number }
 
-export class ForgeEngine {
+export class THRUEngine {
   readonly #proposals = new Map<string, Proposal>();
-  constructor(private readonly registry: SkillRegistry, private readonly model: ForgeModel | null = null, private readonly inspect = inspectWithWebcmd, private readonly proposalTtlMs = 15 * 60_000, private readonly now = Date.now) {}
-  async propose(request: ForgeRequest): Promise<{ proposal_id: string; artifact: SkillArtifact; narration: string[]; questions: string[]; expires_at: string }> {
+  constructor(private readonly registry: SkillRegistry, private readonly model: THRUModel | null = null, private readonly inspect = inspectWithWebcmd, private readonly proposalTtlMs = 15 * 60_000, private readonly now = Date.now) {}
+  async propose(request: THRURequest): Promise<{ proposal_id: string; artifact: SkillArtifact; narration: string[]; questions: string[]; expires_at: string }> {
     if (!request.goal_text?.trim()) throw new Error("goal_text is required"); const parsed = new URL(request.url); if (!/^https?:$/.test(parsed.protocol)) throw new Error("url must use http or https");
     const narration = ["Opening a dedicated Webcmd reconnaissance session."]; const observation = await this.inspect(parsed.href); narration.push(`Observed ${observation.inputs.length} inputs and ${observation.buttons.length} buttons without persisting a draft.`);
     const fallback = deterministicArtifact(request, observation); let artifact = fallback.artifact; const questions = [...fallback.questions];
-    if (this.model) { try { const raw = await this.model.propose({ ...request, observation, deterministic_artifact: artifact }); const validation = validateArtifact(raw); if (!validation.ok) throw new Error(validation.errors.join("; ")); artifact = enforceSensitivity(validation.skill, fallback.artifact); narration.push("Validated an Azure OpenAI structured proposal against the Forge contract."); } catch (error) { narration.push(`Model proposal rejected; deterministic inference retained: ${(error as Error).message.slice(0, 160)}`); } }
+    if (this.model) { try { const raw = await this.model.propose({ ...request, observation, deterministic_artifact: artifact }); const validation = validateArtifact(raw); if (!validation.ok) throw new Error(validation.errors.join("; ")); artifact = enforceSensitivity(validation.skill, fallback.artifact); narration.push("Validated an Azure OpenAI structured proposal against the THRU contract."); } catch (error) { narration.push(`Model proposal rejected; deterministic inference retained: ${(error as Error).message.slice(0, 160)}`); } }
     const id = randomUUID(), expiresAt = this.now() + this.proposalTtlMs; this.#proposals.set(id, { id, artifact, narration, questions, expiresAt }); this.#purge();
     return { proposal_id: id, artifact, narration, questions, expires_at: new Date(expiresAt).toISOString() };
   }
@@ -25,12 +25,12 @@ export class ForgeEngine {
   #purge(): void { const now = this.now(); for (const [id, proposal] of this.#proposals) if (proposal.expiresAt <= now) this.#proposals.delete(id); }
 }
 
-function deterministicArtifact(request: ForgeRequest, observation: PageObservation): { artifact: SkillArtifact; questions: string[] } {
+function deterministicArtifact(request: THRURequest, observation: PageObservation): { artifact: SkillArtifact; questions: string[] } {
   const host = new URL(request.url).hostname; const id = slug(`${host.split(".")[0]}-${request.goal_text}`).slice(0, 60) || `skill-${thisYear()}`; const properties: Record<string, JsonSchema> = {}; const required: string[] = []; const goalSensitive = /\b(submit|send|delete|pay|purchase|transfer|login|otp|captcha)\b/i.test(request.goal_text); const steps: WorkflowStep[] = [{ id: "s1", action: "navigate", target_description: request.goal_text, url: request.url, expect: { contains: [observation.headings[0] ?? observation.title], not_contains: ["captcha", "access denied"] }, timeout_ms: 15_000, sensitive: goalSensitive }];
   for (const [index, input] of observation.inputs.entries()) { const key = slug(input.name || input.id || input.placeholder || input.ariaLabel || `input-${index + 1}`).replaceAll("-", "_"); const selectors = inputSelectors(input); properties[key] = { type: input.type === "number" ? "number" : "string", description: input.placeholder || input.ariaLabel || input.name || "Observed form value" }; required.push(key); steps.push({ id: `s${steps.length + 1}`, action: "fill", target_description: input.ariaLabel || input.placeholder || input.name || `Form input ${index + 1}`, selector_primary: selectors[0] ?? "input", selector_fallbacks: selectors.slice(1, 3), value_from: `inputs.${key}`, expect: { field_value_equals: `inputs.${key}`, not_contains: ["captcha", "password"] }, timeout_ms: 8_000, sensitive: /password|otp|card/i.test(`${input.name} ${input.type} ${input.placeholder} ${input.ariaLabel}`) }); }
   steps.push({ id: `s${steps.length + 1}`, action: "extract", target_description: "Read the resulting page content", selector_primary: "main", selector_fallbacks: ["article", "body"], extraction: { strategy: "header_map", map_to: "outputs", selector: "main" }, expect: { element_present: "body", not_contains: ["access denied"] }, timeout_ms: 8_000, sensitive: false });
   const sensitive = steps.some((step) => step.sensitive); const questions = [...(observation.buttons.length ? [observation.buttons.length === 1 ? `Confirm whether the observed “${observation.buttons[0]}” button is read-only before adding a click step.` : "Which observed button should trigger the read-only result?"] : []), ...(observation.inputs.length && !request.sample_inputs ? ["Provide sample input values before confirming locator behavior."] : []), ...(goalSensitive ? ["This goal appears sensitive; confirm the local human-gate behavior before saving."] : [])];
-  return { questions, artifact: { forge_spec: 1, skill: { id, name: request.goal_text.trim().slice(0, 80), description: `Forged read-only workflow for ${host}.`, site: { domain: host, display: observation.title || host }, version: 1, forged_at: new Date().toISOString(), author: { name: "Forge", id: "local" }, tags: ["forged", "read-only"], sensitive }, contract: { inputs: { type: "object", properties, required, additionalProperties: false }, outputs: { type: "object", properties: { text: { type: "string" } } }, render_hint: "text" }, workflow: { engine: "webcmd", steps }, vitals: { runs: 0, successes: 0, healed_runs: 0, avg_ms: 0, last_run: null, last_heal: null }, history: [] } };
+  return { questions, artifact: { forge_spec: 1, skill: { id, name: request.goal_text.trim().slice(0, 80), description: `Learned read-only workflow for ${host}.`, site: { domain: host, display: observation.title || host }, version: 1, forged_at: new Date().toISOString(), author: { name: "THRU", id: "local" }, tags: ["forged", "read-only"], sensitive }, contract: { inputs: { type: "object", properties, required, additionalProperties: false }, outputs: { type: "object", properties: { text: { type: "string" } } }, render_hint: "text" }, workflow: { engine: "webcmd", steps }, vitals: { runs: 0, successes: 0, healed_runs: 0, avg_ms: 0, last_run: null, last_heal: null }, history: [] } };
 }
 function slug(value: string): string { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
 function cssEscape(value: string): string { return value.replace(/["\\]/g, "\\$&"); }

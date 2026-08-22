@@ -1,8 +1,8 @@
-param([string]$Image = "forge-backend:local", [int]$HostPort = 18080)
+param([string]$Image = "thru-backend:local", [int]$HostPort = 18080)
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 docker build --file (Join-Path $repoRoot "backend/Dockerfile") --tag $Image $repoRoot
-$container = docker run --detach --rm --name forge-mvp-verify --publish "${HostPort}:8080" --env FORGE_ADMIN_KEY=container-test-key $Image
+$container = docker run --detach --rm --name thru-mvp-verify --publish "${HostPort}:8080" --env THRU_ADMIN_KEY=container-test-key $Image
 try {
   for ($attempt = 0; $attempt -lt 30; $attempt++) { try { $health = Invoke-RestMethod "http://127.0.0.1:$HostPort/health"; if ($health.status -in @("ok", "degraded")) { break } } catch {}; Start-Sleep -Seconds 1 }
   if (-not $health) { throw "Container did not become healthy." }

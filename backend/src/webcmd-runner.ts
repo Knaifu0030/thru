@@ -54,14 +54,14 @@ function command(args: string[], stdin?: string, timeout = 15_000): Promise<stri
   const cli = path.resolve("node_modules/@agentrhq/webcmd/dist/src/main.js");
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cli, ...args], { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }); const stdout: Buffer[] = [], stderr: Buffer[] = []; let settled = false;
-    const finish = (callback: () => void) => { if (!settled) { settled = true; callback(); } }; const timer = setTimeout(() => { child.kill(); finish(() => reject(new Error("Webcmd command exceeded its Forge budget."))); }, timeout);
+    const finish = (callback: () => void) => { if (!settled) { settled = true; callback(); } }; const timer = setTimeout(() => { child.kill(); finish(() => reject(new Error("Webcmd command exceeded its THRU budget."))); }, timeout);
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk)); child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk)); child.on("error", (error) => finish(() => reject(error)));
     child.on("close", (code) => finish(() => { clearTimeout(timer); const output = Buffer.concat(stdout).toString("utf8").trim(); code === 0 ? resolve(output) : reject(new Error(Buffer.concat(stderr).toString("utf8").trim() || output || `webcmd exited ${code}`)); })); child.stdin.end(stdin);
   });
 }
 
 export function buildProgram(skill: SkillArtifact, inputs: Record<string, unknown>, budget: number, internalBaseUrl?: string): string {
-  const site = skill.skill.site.domain === "forge-internal" && internalBaseUrl ? internalBaseUrl : /^https?:\/\//.test(skill.skill.site.domain) ? skill.skill.site.domain : `https://${skill.skill.site.domain}`;
+  const site = skill.skill.site.domain === "thru-internal" && internalBaseUrl ? internalBaseUrl : /^https?:\/\//.test(skill.skill.site.domain) ? skill.skill.site.domain : `https://${skill.skill.site.domain}`;
   return `
 const skill=${JSON.stringify(skill)};const inputs=${JSON.stringify(inputs)};const site=${JSON.stringify(site)};const budget=${budget};const started=Date.now();const deadline=started+budget;const reforgeDeadline=()=>Math.min(deadline,Date.now()+45000);const healing=[];const patches=[];const narration=[];const steps=[];let data=null;
 const left=()=>deadline-Date.now();const bounded=s=>String(s).trim().slice(0,160);const value=p=>String(p||'').split('.').reduce((v,k)=>v==null?v:v[k],{inputs});const interpolate=s=>String(s||'').replace(/\\{site\\}/g,site).replace(/\\{inputs\\.([a-zA-Z0-9_-]+)\\}/g,(_,k)=>encodeURIComponent(String(inputs[k]??'')));

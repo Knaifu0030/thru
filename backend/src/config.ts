@@ -31,7 +31,7 @@ function parseOrigins(raw: string | undefined): ReadonlySet<string> {
   for (const value of values) {
     const url = new URL(value);
     if (url.origin !== value || !["http:", "https:"].includes(url.protocol)) {
-      throw new Error(`Invalid origin in FORGE_ALLOWED_ORIGINS: ${value}`);
+      throw new Error(`Invalid origin in THRU_ALLOWED_ORIGINS: ${value}`);
     }
   }
 
@@ -41,9 +41,9 @@ function parseOrigins(raw: string | undefined): ReadonlySet<string> {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     port: parsePort(env.PORT),
-    allowedOrigins: parseOrigins(env.FORGE_ALLOWED_ORIGINS),
+    allowedOrigins: parseOrigins(env.THRU_ALLOWED_ORIGINS ?? env.FORGE_ALLOWED_ORIGINS),
     version: env.npm_package_version ?? "0.1.0",
-    skillsDirectory: path.resolve(env.FORGE_SKILLS_DIR ?? "skills"),
-    adminKey: env.FORGE_ADMIN_KEY?.trim() || null,
+    skillsDirectory: path.resolve(env.THRU_SKILLS_DIR ?? env.FORGE_SKILLS_DIR ?? "skills"),
+    adminKey: (env.THRU_ADMIN_KEY ?? env.FORGE_ADMIN_KEY)?.trim() || null,
   };
 }

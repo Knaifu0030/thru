@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/* ── THRU design tokens — midnight blue, royal cobalt, cool silver ────
+   A restrained, high-contrast system for a premium infrastructure tool.
+   Depth comes from tonal blue surfaces and precise borders, not effects. */
+@theme {
+  --color-bg: oklch(0.145 0.04 264);
+  --color-surface: oklch(0.185 0.048 264);
+  --color-raised: oklch(0.215 0.055 263);
+  --color-overlay: oklch(0.255 0.06 262);
+
+  --color-ink: oklch(0.95 0.018 255);
+  --color-muted: oklch(0.73 0.03 257);
+  --color-faint: oklch(0.57 0.035 258);
+
+  --color-accent: oklch(0.69 0.16 260);
+  --color-accent-bright: oklch(0.77 0.13 255);
+  --color-sage: oklch(0.76 0.105 166);
+  --color-rose: oklch(0.72 0.13 18);
+
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+
+  /* The type scale: 12 / 14 / 16 / 20 / 28 / 40. Nothing else. */
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 16px;
+  --text-base--line-height: 24px;
+  --text-lg: 20px;
+  --text-lg--line-height: 28px;
+  --text-xl: 28px;
+  --text-xl--line-height: 34px;
+  --text-2xl: 40px;
+  --text-2xl--line-height: 46px;
+
+  /* Sharp corners: cards and panels square, controls a hair off square. */
+  --radius-lg: 2px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgb(99 128 255 / 0.34);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.14) transparent;
+}
+
+/* Structural label treatment: mono small-caps, wide tracking. */
+.label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Active nav: royal-blue inversion, with the same shape as every control. */
+.nav-active {
+  background: var(--color-accent);
+}
+
+/* Heal indicator: a finite two-cycle ring, then it settles to a still dot. */
+@keyframes heal-ring {
+  from { transform: scale(1); opacity: 0.6; }
+  to { transform: scale(2.8); opacity: 0; }
+}
+.heal-ring {
+  animation: heal-ring 1.3s ease-out 2 both;
+}
+
+/* Teaching stub: a slow border pulse while THRU learns the workflow. */
+@keyframes teach-pulse {
+  0%, 100% { border-color: rgb(99 128 255 / 0.28); }
+  50% { border-color: rgb(116 149 255 / 0.72); }
+}
+.teach-pulse {
+  animation: teach-pulse 2.2s ease-in-out infinite;
+}
+
+/* One quiet royal pulse when a taught skill settles into the grid. */
+@keyframes settle-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(99 128 255 / 0.38); }
+  100% { box-shadow: 0 0 0 16px rgb(99 128 255 / 0); }
+}
+.settle-pulse {
+  animation: settle-pulse 1.2s ease-out 1 both;
+}
+
+/* Deliberate reveal for the one-time API key display. */
+@keyframes key-reveal {
+  0% { border-color: rgb(99 128 255 / 0.72); background-color: rgb(99 128 255 / 0.08); }
+  100% { border-color: rgb(255 255 255 / 0.12); background-color: rgb(0 0 0 / 0.25); }
+}
+.key-reveal {
+  animation: key-reveal 1.6s ease-out 1 both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -17,7 +17,7 @@
     "id": "check-pnr",
     "name": "Check PNR Status",
     "description": "Gets current booking status for an Indian Railways PNR: train, journey date, and per-passenger status.",
-    "site": { "domain": "verified-on-forge-day.example", "display": "Indian Railways PNR Enquiry" },
+    "site": { "domain": "verified-on-demo-day.example", "display": "Indian Railways PNR Enquiry" },
     "version": 4,
     "forged_at": "2026-08-22T10:14:03+05:30",
     "author": { "name": "you", "id": "local" },
@@ -108,14 +108,14 @@
 
 ## Field Rules (agent: enforce)
 
-- `skill.id`: kebab-case, unique in registry, becomes the REST path (`/skills/{id}`) and the MCP tool name (`forge_{id}` with `-`→`_`). Collision on import → suffix `-2`, never overwrite.
+- `skill.id`: kebab-case, unique in registry, becomes the REST path (`/skills/{id}`) and the MCP tool name (`thru_{id}` with `-`→`_`). Collision on import → suffix `-2`, never overwrite.
 - `contract.inputs/outputs`: JSON Schema (draft-07 subset: type/properties/required/pattern/format/items/description). The form generator, REST validator, and MCP tool schema all read THIS — one schema, three surfaces (parity principle).
 - `render_hint`: how the Use tab displays results — `table:<path>` | `keyvalue` | `raw`. Optional; default `keyvalue`.
 - `expect`: every step ≥1 positive AND ≥1 negative check. Vocabulary: `contains` (page text), `not_contains`, `url_contains`, `element_present`, `field_value_equals`, `min_items`.
-- `sensitive`: step-level. Any of {login, otp, captcha, payment, submit-with-side-effects} MUST be flagged during forging. Healing can ADD flags, never remove (see `05`). Skill-level `sensitive` = OR of steps; renders 🔒 on the card; Gateway returns `needs_human` for these unless run locally with a human present.
+- `sensitive`: step-level. Any of {login, otp, captcha, payment, submit-with-side-effects} MUST be flagged during teaching. Healing can ADD flags, never remove (see `05`). Skill-level `sensitive` = OR of steps; renders 🔒 on the card; Gateway returns `needs_human` for these unless run locally with a human present.
 - `vitals`: updated after every run, atomically with a `.bak`. `healed_runs` counts runs that succeeded via any ladder rung ≥2.
 - `history`: append-only, cap last 10 versions, each entry embeds the FULL previous step object (diff-able, revertible).
-- Export strips nothing (artifact is already credential-free by construction); import validates against `forge_spec` and re-registers surfaces hot.
+- Export strips nothing (artifact is already credential-free by construction); import validates against `forge_spec` and re-registers surfaces hot. The serialized names `forge_spec` and `forged_at` are retained as v1 compatibility fields; they are not customer-facing THRU branding.
 
 ## Gateway Response Envelope (REST + MCP share it)
 
@@ -125,7 +125,7 @@
   "status": "success | healed_success | invalid_input | portal_error | needs_human",
   "data": { "…per outputs schema…" },
   "healing": [ { "step": "s3", "rung": "relocate", "note": "…" } ],
-  "needs_human": { "reason": "captcha", "how": "Run locally: forge run check-pnr — a human must complete the captcha." },
+  "needs_human": { "reason": "captcha", "how": "Run locally: thru run check-pnr — a human must complete the captcha." },
   "timing_ms": 6100
 }
 ```

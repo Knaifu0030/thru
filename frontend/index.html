@@ -1,77 +1,15 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#151318" />
-    <meta name="description" content="Forge turns learned web workflows into durable capabilities." />
-    <title>Forge — Deployment status</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23151318'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='Arial' font-weight='700' font-size='18' fill='white'%3EF%3C/text%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css" />
-    <script src="config.js" defer></script>
-    <script src="app.js" defer></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#071022" />
+    <meta name="description" content="THRU — teach a website workflow once, get a button, an API, and an agent tool back." />
+    <link rel="icon" type="image/png" href="/thru-logo.png" />
+    <title>THRU</title>
   </head>
   <body>
-    <main class="shell">
-      <header class="masthead">
-        <a class="wordmark" href="/" aria-label="Forge home">
-          <span class="mark" aria-hidden="true">F</span>
-          <span>Forge</span>
-        </a>
-        <span class="phase">Gate 0</span>
-      </header>
-
-      <section class="status-panel" aria-labelledby="status-title">
-        <div class="status-copy">
-          <div class="signal" id="signal" data-state="checking" aria-hidden="true"></div>
-          <p class="status-label" id="status-label">Checking production link…</p>
-          <h1 id="status-title">The first connection is being forged.</h1>
-          <p class="lede" id="status-message">
-            This page is calling the Forge backend across the public web. No mock status, no hidden fallback.
-          </p>
-        </div>
-
-        <dl class="readout" aria-live="polite" aria-busy="true" id="readout">
-          <div>
-            <dt>Frontend</dt>
-            <dd>Static / ready</dd>
-          </div>
-          <div>
-            <dt>Backend</dt>
-            <dd id="backend-value">Connecting</dd>
-          </div>
-          <div>
-            <dt>Webcmd</dt>
-            <dd id="webcmd-value">Checking</dd>
-          </div>
-          <div>
-            <dt>API origin</dt>
-            <dd class="mono" id="origin-value">—</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section class="thesis" aria-label="Forge product promise">
-        <p>Teach a website once.</p>
-        <div class="surfaces">
-          <span>A button for a human</span>
-          <span>An endpoint for a developer</span>
-          <span>A tool for an agent</span>
-        </div>
-      </section>
-
-      <section class="marketplace" aria-labelledby="marketplace-title">
-        <div class="marketplace-heading">
-          <h2 id="marketplace-title">Installed skills</h2>
-          <p id="marketplace-status">Loading registry…</p>
-        </div>
-        <div id="skill-list"></div>
-      </section>
-
-      <footer>
-        <p>Gate 0 proves the production path before feature work begins.</p>
-        <button id="retry" type="button" hidden>Retry connection</button>
-      </footer>
-    </main>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

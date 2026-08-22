@@ -2,8 +2,8 @@ param(
   [Parameter(Mandatory=$true)][string]$ApiBase,
   [Parameter(Mandatory=$true)][string]$FrontendOrigin,
   [Parameter(Mandatory=$true)][string]$AdminKey,
-  [string]$ResourceGroup = "forge-rg",
-  [string]$ContainerApp = "forge-backend"
+  [string]$ResourceGroup = "thru-rg",
+  [string]$ContainerApp = "thru-backend"
 )
 $ErrorActionPreference = "Stop"
 $ApiBase = $ApiBase.TrimEnd("/"); $FrontendOrigin = $FrontendOrigin.TrimEnd("/")
