@@ -8,10 +8,7 @@ export interface AppConfig {
   readonly adminKey: string | null;
 }
 
-const DEFAULT_ORIGINS = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-];
+const DEFAULT_ORIGINS: string[] = [];
 
 function parsePort(raw: string | undefined): number {
   if (raw === undefined) return 8080;

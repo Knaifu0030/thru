@@ -2,9 +2,9 @@
  * The single data-access module. Every component in the app calls through
  * here — no inline fetches, no mock objects anywhere in the frontend.
  *
- * The gateway base URL comes from VITE_THRU_API_BASE (defaults to the
- * local backend at http://localhost:8080). Pointing at production is a
- * one-line env change; no component knows the difference.
+ * The gateway base URL comes from VITE_THRU_API_BASE and defaults to the
+ * public THRU gateway. Local development requires an explicit override;
+ * public builds never fall back to localhost.
  *
  * The implementations match backend/src/app.ts exactly:
  *  - error envelope { error: { code, message } }
@@ -35,7 +35,8 @@ import type {
 const API_BASE =
   (import.meta.env.VITE_THRU_API_BASE ?? import.meta.env.VITE_FORGE_API_BASE ?? "")
     .trim()
-    .replace(/\/+$/, "") || "http://localhost:8080";
+    .replace(/\/+$/, "") ||
+  "https://forge-backend.mangosmoke-65ea4a06.centralindia.azurecontainerapps.io";
 const ADMIN_KEY = (import.meta.env.VITE_THRU_ADMIN_KEY ?? import.meta.env.VITE_FORGE_ADMIN_KEY ?? "").trim();
 
 export const GATEWAY_BASE = API_BASE;
@@ -57,7 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${API_BASE}${path}`, init);
   } catch {
-    throw new ApiError("network", "The gateway didn't answer. Is the backend running?");
+    throw new ApiError("network", "The public THRU gateway could not be reached. Please try again.");
   }
   const body = (await res.json().catch(() => null)) as
     | (T & { error?: { code: string; message: string } })
