@@ -5,8 +5,8 @@ import path from "node:path";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
 import { boundedNarration, enforceSensitivity, GLOBAL_RUN_BUDGET_MS, isSensitiveStep, semanticSimilarity } from "./execution-policy.js";
-import { ForgeEngine } from "./forge-engine.js";
-import { AzureOpenAIForgeModel, type ForgeModel } from "./forge-model.js";
+import { THRUEngine } from "./forge-engine.js";
+import { AzureOpenAITHRUModel, type THRUModel } from "./forge-model.js";
 import { SkillRegistry } from "./registry.js";
 import { validateArtifact, validateOutputs } from "./skill-validation.js";
 import type { SkillArtifact } from "./types.js";
@@ -29,8 +29,8 @@ test("registry suffixes collisions, quarantines temp files, and restores a valid
   const target = path.join(directory, "hell-check.skill.json"); await writeFile(`${target}.bak`, JSON.stringify(first), "utf8"); await writeFile(target, "broken", "utf8"); await writeFile(path.join(directory, "orphan.tmp"), "broken", "utf8"); const restored = new SkillRegistry(directory); await restored.load(); assert.ok(restored.get("hell-check")); assert.ok((await readdir(path.join(directory, "_invalid"))).some((name) => name.includes("orphan.tmp")));
 });
 
-test("Forge proposals fall back from malformed model output, expire, and accept edited confirmation", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "forge-proposal-")); const registry = new SkillRegistry(directory); await registry.load(); let now = 1_000; const observation = async (url: string) => ({ url, title: "Observed", headings: ["Observed"], labels: ["Query"], inputs: [{ name: "query", type: "text", placeholder: "Search", id: "query", ariaLabel: "Query" }], buttons: ["Search"], tables: [] }); const malformed: ForgeModel = { propose: async () => ({ nope: true }) }; const engine = new ForgeEngine(registry, malformed, observation, 100, () => now); const proposal = await engine.propose({ goal_text: "Read public results", url: "https://example.org" }); assert.match(proposal.narration.join(" "), /Model proposal rejected/); assert.equal(registry.list().length, 0); const edited = { ...proposal.artifact, skill: { ...proposal.artifact.skill, name: "Edited proposal" } }; const saved = await engine.confirm(proposal.proposal_id, edited); assert.equal(saved.skill.name, "Edited proposal");
+test("THRU proposals fall back from malformed model output, expire, and accept edited confirmation", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "forge-proposal-")); const registry = new SkillRegistry(directory); await registry.load(); let now = 1_000; const observation = async (url: string) => ({ url, title: "Observed", headings: ["Observed"], labels: ["Query"], inputs: [{ name: "query", type: "text", placeholder: "Search", id: "query", ariaLabel: "Query" }], buttons: ["Search"], tables: [] }); const malformed: THRUModel = { propose: async () => ({ nope: true }) }; const engine = new THRUEngine(registry, malformed, observation, 100, () => now); const proposal = await engine.propose({ goal_text: "Read public results", url: "https://example.org" }); assert.match(proposal.narration.join(" "), /Model proposal rejected/); assert.equal(registry.list().length, 0); const edited = { ...proposal.artifact, skill: { ...proposal.artifact.skill, name: "Edited proposal" } }; const saved = await engine.confirm(proposal.proposal_id, edited); assert.equal(saved.skill.name, "Edited proposal");
   const expiring = await engine.propose({ goal_text: "Read another page", url: "https://example.net" }); now += 101; await assert.rejects(engine.confirm(expiring.proposal_id), /expired/);
 });
 
@@ -48,11 +48,11 @@ test("Azure OpenAI provider requests structured output and rejects malformed JSO
   const original = globalThis.fetch; let requestBody: unknown;
   try {
     globalThis.fetch = async (_input, init) => { requestBody = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(await fixture()) } }] }), { status: 200, headers: { "Content-Type": "application/json" } }); };
-    const model = new AzureOpenAIForgeModel({ endpoint: "https://forge.openai.azure.com", apiKey: "test-key", deployment: "forge-model", apiVersion: "2024-10-21" }); const proposed = await model.propose({ goal_text: "read", url: "https://example.org", observation: {}, deterministic_artifact: {} }); assert.equal((proposed as SkillArtifact).forge_spec, 1); assert.equal((requestBody as { response_format: { type: string } }).response_format.type, "json_schema");
+    const model = new AzureOpenAITHRUModel({ endpoint: "https://forge.openai.azure.com", apiKey: "test-key", deployment: "forge-model", apiVersion: "2024-10-21" }); const proposed = await model.propose({ goal_text: "read", url: "https://example.org", observation: {}, deterministic_artifact: {} }); assert.equal((proposed as SkillArtifact).forge_spec, 1); assert.equal((requestBody as { response_format: { type: string } }).response_format.type, "json_schema");
     globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: "not json" } }] }), { status: 200, headers: { "Content-Type": "application/json" } }); await assert.rejects(model.propose({ goal_text: "read", url: "https://example.org", observation: {}, deterministic_artifact: {} }), /malformed JSON/);
   } finally { globalThis.fetch = original; }
 });
 
-test("distribution contains exactly the five MVP artifacts", async () => {
-  const files = (await readdir(path.resolve("skills"))).filter((name) => name.endsWith(".skill.json")).sort(); assert.deepEqual(files, ["cern-history.skill.json", "example-reference.skill.json", "hell-check.skill.json", "httpbin-document.skill.json", "sensitive-submit.skill.json"]);
+test("distribution contains exactly the seven MVP and demo artifacts", async () => {
+  const files = (await readdir(path.resolve("skills"))).filter((name) => name.endsWith(".skill.json")).sort(); assert.deepEqual(files, ["cern-history.skill.json", "example-reference.skill.json", "hell-check.skill.json", "httpbin-document.skill.json", "nadakacheri-check-status.skill.json", "nadakacheri-prepare-income.skill.json", "sensitive-submit.skill.json"]);
 });

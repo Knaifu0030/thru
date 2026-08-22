@@ -6,15 +6,15 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import type { Server } from "node:http";
 import test, { after, before } from "node:test";
-import { createForgeServer } from "./app.js";
+import { createTHRUServer } from "./app.js";
 import { SkillExecutor } from "./executor.js";
 import { MockPortal } from "./mock-portal.js";
 import { SkillRegistry } from "./registry.js";
-import { ForgeEngine } from "./forge-engine.js";
+import { THRUEngine } from "./forge-engine.js";
 import { RunManager } from "./run-manager.js";
 import type { JsonSchema, SkillArtifact, WorkflowStep } from "./types.js";
 
-const allowedOrigin = "https://forge.example.vercel.app";
+const allowedOrigin = "https://thru.example.vercel.app";
 let server: Server;
 let baseUrl = "";
 let testDirectory = "";
@@ -27,11 +27,13 @@ before(async () => {
   await registry.load();
   const fixture = JSON.parse(await readFile(path.resolve("skills/hell-check.skill.json"), "utf8"));
   await registry.import(fixture);
+  await registry.import(JSON.parse(await readFile(path.resolve("skills/nadakacheri-prepare-income.skill.json"), "utf8")));
+  await registry.import(JSON.parse(await readFile(path.resolve("skills/nadakacheri-check-status.skill.json"), "utf8")));
   mockPortal = new MockPortal();
   const executor = new SkillExecutor(registry);
-  const forgeEngine = new ForgeEngine(registry, null, async (url) => ({ url, title: "Test", headings: ["Test"], labels: [], inputs: [], buttons: [], tables: [] }));
+  const forgeEngine = new THRUEngine(registry, null, async (url) => ({ url, title: "Test", headings: ["Test"], labels: [], inputs: [], buttons: [], tables: [] }));
   const runManager = new RunManager(executor);
-  server = createForgeServer({
+  server = createTHRUServer({
     port: 0,
     version: "test",
     allowedOrigins: new Set([allowedOrigin]),
@@ -54,7 +56,7 @@ test("health returns a safe structured response", async () => {
   const response = await fetch(`${baseUrl}/health`);
   const body = (await response.json()) as Record<string, unknown>;
   assert.equal(response.status, 200);
-  assert.equal(body.service, "forge-backend");
+  assert.equal(body.service, "thru-backend");
   assert.ok(body.status === "ok" || body.status === "degraded");
 });
 
@@ -65,7 +67,7 @@ test("hello proves an allowed cross-origin request", async () => {
   const body = (await response.json()) as Record<string, unknown>;
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("access-control-allow-origin"), allowedOrigin);
-  assert.equal(body.message, "Forge deployment online");
+  assert.equal(body.message, "THRU deployment online");
 });
 
 test("preflight returns the exact CORS contract", async () => {
@@ -77,7 +79,7 @@ test("preflight returns the exact CORS contract", async () => {
   assert.equal(response.headers.get("access-control-allow-methods"), "GET, POST, DELETE, OPTIONS");
   assert.equal(
     response.headers.get("access-control-allow-headers"),
-    "Content-Type, X-Forge-Admin-Key, Prefer",
+    "Content-Type, X-THRU-Admin-Key, X-Forge-Admin-Key, Prefer",
   );
 });
 
@@ -98,8 +100,8 @@ test("unknown routes return a structured 404", async () => {
 });
 
 test("malformed and oversized requests fail safely without stack traces", async () => {
-  const malformed = await fetch(`${baseUrl}/registry/import`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: "{" }); const malformedText = await malformed.text(); assert.equal(malformed.status, 400); assert.doesNotMatch(malformedText, /\bat\s+\w+|node:internal/);
-  const oversized = await fetch(`${baseUrl}/registry/import`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: JSON.stringify({ value: "x".repeat(1_048_576) }) }); const oversizedText = await oversized.text(); assert.equal(oversized.status, 413); assert.doesNotMatch(oversizedText, /\bat\s+\w+|node:internal/);
+  const malformed = await fetch(`${baseUrl}/registry/import`, { method: "POST", headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" }, body: "{" }); const malformedText = await malformed.text(); assert.equal(malformed.status, 400); assert.doesNotMatch(malformedText, /\bat\s+\w+|node:internal/);
+  const oversized = await fetch(`${baseUrl}/registry/import`, { method: "POST", headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" }, body: JSON.stringify({ value: "x".repeat(1_048_576) }) }); const oversizedText = await oversized.text(); assert.equal(oversized.status, 413); assert.doesNotMatch(oversizedText, /\bat\s+\w+|node:internal/);
   const oddMethod = await fetch(`${baseUrl}/skills/hell-check`, { method: "PATCH", body: "noise" }); assert.equal(oddMethod.status, 404);
 });
 
@@ -107,7 +109,25 @@ test("registry exposes installed skills", async () => {
   const response = await fetch(`${baseUrl}/registry`);
   const body = (await response.json()) as { skills: Array<{ skill: { id: string } }> };
   assert.equal(response.status, 200);
-  assert.deepEqual(body.skills.map((item) => item.skill.id), ["hell-check"]);
+  assert.deepEqual(body.skills.map((item) => item.skill.id).sort(), ["hell-check", "nadakacheri-check-status", "nadakacheri-prepare-income"]);
+});
+
+test("NammaDocs skills execute directly and asynchronously through Webcmd", async () => {
+  const prepareInputs = { applicant_name: "Ananya Rao", date_of_birth: "2002-04-12", district: "Bengaluru Urban", taluk: "Bengaluru North", annual_income: 180000, purpose: "Scholarship", identity_ready: true, address_ready: true, income_ready: true, photo_ready: true };
+  const prepared = await fetch(`${baseUrl}/skills/nadakacheri-prepare-income`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prepareInputs) });
+  let envelope: { status: string; data: { reference: string }; steps?: unknown[] };
+  if (prepared.status === 202) { let run = await prepared.json() as { id: string; state: string; result?: typeof envelope }; for (let attempt = 0; attempt < 180 && run.state !== "completed"; attempt++) { await new Promise((resolve) => setTimeout(resolve, 500)); run = await (await fetch(`${baseUrl}/runs/${run.id}`)).json() as typeof run; } assert.equal(run.state, "completed"); assert.ok(run.result); envelope = run.result; }
+  else { assert.equal(prepared.status, 200); envelope = await prepared.json() as typeof envelope; }
+  assert.equal(envelope.status, "success"); assert.equal(envelope.data.reference, "INC-KA-48291"); assert.ok((envelope.steps?.length ?? 0) >= 4);
+  const queuedResponse = await fetch(`${baseUrl}/skills/nadakacheri-check-status`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "respond-async" }, body: JSON.stringify({ reference: envelope.data.reference }) });
+  assert.equal(queuedResponse.status, 202); let run = await queuedResponse.json() as { id: string; state: string; result?: { status: string; data: { status: string } } };
+  for (let attempt = 0; attempt < 40 && run.state !== "completed"; attempt++) { await new Promise((resolve) => setTimeout(resolve, 250)); run = await (await fetch(`${baseUrl}/runs/${run.id}`)).json() as typeof run; }
+  assert.equal(run.state, "completed"); assert.equal(run.result?.status, "success"); assert.equal(run.result?.data.status, "certificate_issued");
+});
+
+test("NammaDocs skill rejects invalid inputs before opening a browser", async () => {
+  const response = await fetch(`${baseUrl}/skills/nadakacheri-check-status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference: "REAL-123" }) });
+  const body = await response.json() as { status: string; steps?: unknown[] }; assert.equal(response.status, 400); assert.equal(body.status, "invalid_input"); assert.equal(body.steps?.length ?? 0, 0);
 });
 
 test("MCP lists each registry skill as a typed tool", async () => {
@@ -122,7 +142,7 @@ test("MCP lists each registry skill as a typed tool", async () => {
   });
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.match(body, /forge_hell_check/);
+  assert.match(body, /thru_hell_check/);
   assert.match(body, /Certificate reference/);
 
   const call = await fetch(`${baseUrl}/mcp`, {
@@ -132,7 +152,7 @@ test("MCP lists each registry skill as a typed tool", async () => {
       Accept: "application/json, text/event-stream",
       "MCP-Protocol-Version": "2025-11-25",
     },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "forge_hell_check", arguments: { certificate: "DEMO-1000" } } }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "thru_hell_check", arguments: { certificate: "DEMO-1000" } } }),
   });
   const callBody = await call.text();
   assert.equal(call.status, 200);
@@ -167,7 +187,7 @@ test("one skill runs through REST and updates vitals", async () => {
 test("admin sabotage triggers relocation and persists a version bump", async () => {
   const sabotage = await fetch(`${baseUrl}/admin/sabotage`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" },
+    headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" },
     body: JSON.stringify({ variant: "v2" }),
   });
   assert.equal(sabotage.status, 200);
@@ -224,11 +244,11 @@ test("Prefer respond-async returns a queued run that can be polled", async () =>
   assert.equal(state.state, "completed"); assert.ok(["success", "healed_success"].includes(state.result?.status ?? ""));
 });
 
-test("two-phase Forge keeps drafts unregistered until confirmation and hot-registers MCP", async () => {
-  const proposed = await fetch(`${baseUrl}/forge`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: JSON.stringify({ goal_text: "Read test page", url: "https://example.org" }) });
+test("two-phase THRU keeps drafts unregistered until confirmation and hot-registers MCP", async () => {
+  const proposed = await fetch(`${baseUrl}/teach`, { method: "POST", headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" }, body: JSON.stringify({ goal_text: "Read test page", url: "https://example.org" }) });
   assert.equal(proposed.status, 201); const proposal = await proposed.json() as { proposal_id: string; artifact: { skill: { id: string } } }; assert.equal(registry.get(proposal.artifact.skill.id), undefined);
-  const confirmed = await fetch(`${baseUrl}/forge/${proposal.proposal_id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: "{}" }); assert.equal(confirmed.status, 201); assert.ok(registry.get(proposal.artifact.skill.id));
-  const tools = await fetch(`${baseUrl}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" }, body: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/list", params: {} }) }); assert.match(await tools.text(), new RegExp(`forge_${proposal.artifact.skill.id.replaceAll("-", "_")}`));
+  const confirmed = await fetch(`${baseUrl}/teach/${proposal.proposal_id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" }, body: "{}" }); assert.equal(confirmed.status, 201); assert.ok(registry.get(proposal.artifact.skill.id));
+  const tools = await fetch(`${baseUrl}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" }, body: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/list", params: {} }) }); assert.match(await tools.text(), new RegExp(`thru_${proposal.artifact.skill.id.replaceAll("-", "_")}`));
 });
 
 test("browser execution resolves iframe tables by headers", async () => {

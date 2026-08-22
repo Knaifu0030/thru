@@ -1,0 +1,34 @@
+{
+  "forge_spec": 1,
+  "skill": {
+    "id": "nadakacheri-check-status",
+    "name": "Check Demo Income Certificate Status",
+    "description": "Checks a fictional income-certificate reference on THRU's internal Nadakacheri demo portal.",
+    "site": { "domain": "forge-internal", "display": "Fictional Nadakacheri Demo Portal" },
+    "version": 1,
+    "forged_at": "2026-08-22T10:00:00+05:30",
+    "author": { "name": "THRU", "id": "local" },
+    "tags": ["demo", "civic-tech", "certificate-status", "read-only"],
+    "sensitive": false
+  },
+  "contract": {
+    "inputs": { "type": "object", "properties": { "reference": { "type": "string", "pattern": "^INC-KA-[0-9]{5}$", "description": "Fictional NammaDocs reference" } }, "required": ["reference"] },
+    "outputs": {
+      "type": "object",
+      "properties": { "reference": { "type": "string" }, "status": { "type": "string" }, "certificate_number": { "type": "string" }, "issued_on": { "type": "string", "format": "date" } },
+      "required": ["reference", "status", "certificate_number", "issued_on"]
+    },
+    "render_hint": "keyvalue"
+  },
+  "workflow": {
+    "engine": "webcmd",
+    "steps": [
+      { "id": "s1", "action": "navigate", "target_description": "Fictional certificate status page", "url": "{site}/mock/nadakacheri/status", "expect": { "contains": ["Demo certificate status"], "not_contains": ["login", "captcha"] }, "timeout_ms": 15000, "sensitive": false },
+      { "id": "s2", "action": "fill", "target_description": "Application reference", "selector_primary": "#reference", "selector_fallbacks": ["input[name='reference']", "label:Application reference"], "value_from": "inputs.reference", "expect": { "field_value_equals": "inputs.reference", "not_contains": ["password", "otp"] }, "timeout_ms": 6000, "sensitive": false },
+      { "id": "s3", "action": "click", "target_description": "Check certificate status button", "selector_primary": "#check-certificate", "selector_fallbacks": ["text:Check certificate status", "button[type='button']"], "expect": { "element_present": "#result-json", "not_contains": ["payment", "login"] }, "timeout_ms": 8000, "sensitive": false },
+      { "id": "s4", "action": "extract", "target_description": "Issued certificate result", "selector_primary": "#result-json", "selector_fallbacks": ["pre"], "extraction": { "strategy": "json_element", "map_to": "outputs", "selector": "#result-json" }, "expect": { "contains": ["certificate_issued"], "not_contains": ["error"] }, "timeout_ms": 5000, "sensitive": false }
+    ]
+  },
+  "vitals": { "runs": 0, "successes": 0, "healed_runs": 0, "avg_ms": 0, "last_run": null, "last_heal": null },
+  "history": []
+}
