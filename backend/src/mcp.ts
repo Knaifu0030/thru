@@ -26,7 +26,7 @@ export async function handleMcpRequest(
       description: skill.skill.description,
       inputSchema: schemaToZod(skill.contract.inputs) as ZodType<Record<string, unknown>>,
     }, async (inputs) => {
-      const result = await executor.runSkill(skill.skill.id, inputs, "mcp");
+      const result = await executor.runSkill(skill.skill.id, inputs, { surface: "mcp", timeBudgetMs: 55_000 });
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
         structuredContent: result as unknown as Record<string, unknown>,

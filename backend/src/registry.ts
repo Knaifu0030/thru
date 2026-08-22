@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
@@ -31,7 +31,10 @@ export class SkillRegistry extends EventEmitter {
         const safe = enforceSensitivity(validation.skill);
         this.#skills.set(safe.skill.id, safe);
       } catch {
-        await rename(source, path.join(this.#invalidDirectory, `${Date.now()}-${file}`));
+        const backup = `${source}.bak`;
+        try {
+          const restored: unknown = JSON.parse(await readFile(backup, "utf8")); const valid = validateArtifact(restored); if (!valid.ok) throw new Error("invalid backup"); await copyFile(backup, source); this.#skills.set(valid.skill.skill.id, enforceSensitivity(valid.skill));
+        } catch { await rename(source, path.join(this.#invalidDirectory, `${Date.now()}-${file}`)); }
       }
     }
   }
@@ -55,8 +58,11 @@ export class SkillRegistry extends EventEmitter {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    await writeFile(temp, `${JSON.stringify(skill, null, 2)}\n`, "utf8");
-    await rename(temp, target);
+    try {
+      await writeFile(temp, `${JSON.stringify(skill, null, 2)}\n`, "utf8");
+      const verified = validateArtifact(JSON.parse(await readFile(temp, "utf8"))); if (!verified.ok) throw new Error(`temp verification failed: ${verified.errors.join("; ")}`);
+      await rename(temp, target);
+    } catch (error) { await unlink(temp).catch(() => undefined); throw error; }
     this.#skills.set(skill.skill.id, skill);
     this.emit("change", skill.skill.id);
   }

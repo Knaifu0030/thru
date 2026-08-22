@@ -1,21 +1,21 @@
 {
   "forge_spec": 1,
   "skill": {
-    "id": "example-title",
-    "name": "Read Example Domain",
-    "description": "Reads the heading from Example Domain through a live Webcmd browser session.",
+    "id": "example-reference",
+    "name": "Example Reference Page",
+    "description": "Reads the stable IANA example-domain reference page.",
     "site": {
       "domain": "example.com",
       "display": "Example Domain"
     },
     "version": 1,
-    "forged_at": "2026-08-22T09:00:00+05:30",
+    "forged_at": "2026-08-22T00:00:00.000Z",
     "author": {
       "name": "Forge",
       "id": "local"
     },
     "tags": [
-      "demo",
+      "reference",
       "read-only"
     ],
     "sensitive": false
@@ -24,7 +24,8 @@
     "inputs": {
       "type": "object",
       "properties": {},
-      "required": []
+      "required": [],
+      "additionalProperties": false
     },
     "outputs": {
       "type": "object",
@@ -34,7 +35,7 @@
         }
       }
     },
-    "render_hint": "keyvalue"
+    "render_hint": "text"
   },
   "workflow": {
     "engine": "webcmd",
@@ -42,14 +43,14 @@
       {
         "id": "s1",
         "action": "navigate",
-        "target_description": "Example Domain home page",
-        "url": "{site}",
+        "target_description": "IANA example reference page",
+        "url": "{site}/",
         "expect": {
           "contains": [
             "Example Domain"
           ],
           "not_contains": [
-            "maintenance",
+            "captcha",
             "login"
           ]
         },
@@ -59,22 +60,22 @@
       {
         "id": "s2",
         "action": "extract",
-        "target_description": "Main page heading",
-        "selector_primary": "h1",
+        "target_description": "Reference explanation",
+        "selector_primary": "body",
         "selector_fallbacks": [
-          "main h1"
+          "main"
         ],
         "extraction": {
           "strategy": "header_map",
-          "map_to": "outputs"
+          "map_to": "outputs",
+          "selector": "body"
         },
         "expect": {
           "contains": [
-            "Example Domain"
+            "documentation examples"
           ],
           "not_contains": [
-            "error",
-            "captcha"
+            "access denied"
           ]
         },
         "timeout_ms": 8000,
@@ -83,11 +84,11 @@
     ]
   },
   "vitals": {
-    "runs": 0,
-    "successes": 0,
+    "runs": 15,
+    "successes": 13,
     "healed_runs": 0,
-    "avg_ms": 0,
-    "last_run": null,
+    "avg_ms": 1518,
+    "last_run": "2026-08-22T05:28:03.437Z",
     "last_heal": null
   },
   "history": []

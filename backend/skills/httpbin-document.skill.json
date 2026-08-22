@@ -1,0 +1,96 @@
+{
+  "forge_spec": 1,
+  "skill": {
+    "id": "httpbin-document",
+    "name": "HTTP Test Document",
+    "description": "Reads the stable public HTML test document from HTTPBin.",
+    "site": {
+      "domain": "httpbin.org",
+      "display": "HTTPBin"
+    },
+    "version": 1,
+    "forged_at": "2026-08-22T00:00:00.000Z",
+    "author": {
+      "name": "Forge",
+      "id": "local"
+    },
+    "tags": [
+      "http",
+      "document",
+      "read-only"
+    ],
+    "sensitive": false
+  },
+  "contract": {
+    "inputs": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "render_hint": "text"
+  },
+  "workflow": {
+    "engine": "webcmd",
+    "steps": [
+      {
+        "id": "s1",
+        "action": "navigate",
+        "target_description": "HTTPBin HTML test document",
+        "url": "{site}/html",
+        "expect": {
+          "contains": [
+            "Herman Melville"
+          ],
+          "not_contains": [
+            "captcha",
+            "login"
+          ]
+        },
+        "timeout_ms": 15000,
+        "sensitive": false
+      },
+      {
+        "id": "s2",
+        "action": "extract",
+        "target_description": "Public test document text",
+        "selector_primary": "body",
+        "selector_fallbacks": [
+          "html"
+        ],
+        "extraction": {
+          "strategy": "header_map",
+          "map_to": "outputs",
+          "selector": "body"
+        },
+        "expect": {
+          "contains": [
+            "Moby-Dick"
+          ],
+          "not_contains": [
+            "access denied"
+          ]
+        },
+        "timeout_ms": 8000,
+        "sensitive": false
+      }
+    ]
+  },
+  "vitals": {
+    "runs": 14,
+    "successes": 14,
+    "healed_runs": 0,
+    "avg_ms": 2820,
+    "last_run": "2026-08-22T05:28:40.984Z",
+    "last_heal": null
+  },
+  "history": []
+}

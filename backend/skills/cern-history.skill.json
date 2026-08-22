@@ -1,0 +1,96 @@
+{
+  "forge_spec": 1,
+  "skill": {
+    "id": "cern-history",
+    "name": "First Website History",
+    "description": "Reads the public history page for the first website.",
+    "site": {
+      "domain": "info.cern.ch",
+      "display": "CERN First Website"
+    },
+    "version": 1,
+    "forged_at": "2026-08-22T00:00:00.000Z",
+    "author": {
+      "name": "Forge",
+      "id": "local"
+    },
+    "tags": [
+      "history",
+      "web",
+      "read-only"
+    ],
+    "sensitive": false
+  },
+  "contract": {
+    "inputs": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "render_hint": "text"
+  },
+  "workflow": {
+    "engine": "webcmd",
+    "steps": [
+      {
+        "id": "s1",
+        "action": "navigate",
+        "target_description": "CERN first website page",
+        "url": "{site}/hypertext/WWW/TheProject.html",
+        "expect": {
+          "contains": [
+            "World Wide Web"
+          ],
+          "not_contains": [
+            "captcha",
+            "login"
+          ]
+        },
+        "timeout_ms": 15000,
+        "sensitive": false
+      },
+      {
+        "id": "s2",
+        "action": "extract",
+        "target_description": "World Wide Web project history",
+        "selector_primary": "body",
+        "selector_fallbacks": [
+          "html"
+        ],
+        "extraction": {
+          "strategy": "header_map",
+          "map_to": "outputs",
+          "selector": "body"
+        },
+        "expect": {
+          "contains": [
+            "hypermedia information retrieval"
+          ],
+          "not_contains": [
+            "access denied"
+          ]
+        },
+        "timeout_ms": 8000,
+        "sensitive": false
+      }
+    ]
+  },
+  "vitals": {
+    "runs": 14,
+    "successes": 14,
+    "healed_runs": 0,
+    "avg_ms": 1637,
+    "last_run": "2026-08-22T05:29:02.391Z",
+    "last_heal": null
+  },
+  "history": []
+}

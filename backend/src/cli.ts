@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
 import path from "node:path";
 import { loadConfig } from "./config.js";
 import { SkillExecutor } from "./executor.js";
-import { MockPortal } from "./mock-portal.js";
+import { ForgeEngine } from "./forge-engine.js";
+import { modelFromEnvironment } from "./forge-model.js";
 import { SkillRegistry } from "./registry.js";
 import { refreshWebcmdDiagnostic } from "./webcmd-diagnostic.js";
 
@@ -11,7 +13,8 @@ const [command, ...args] = process.argv.slice(2);
 const config = loadConfig();
 const registry = new SkillRegistry(config.skillsDirectory);
 await registry.load();
-const executor = new SkillExecutor(registry, new MockPortal());
+const executor = new SkillExecutor(registry, `http://127.0.0.1:${config.port}`);
+const forgeEngine = new ForgeEngine(registry, modelFromEnvironment());
 
 try {
   switch (command) {
@@ -25,7 +28,13 @@ try {
         if (index < 1) throw new Error(`Input must be key=value: ${pair}`);
         return [pair.slice(0, index), pair.slice(index + 1)];
       }));
-      const result = await executor.runSkill(id, inputs, "local_human");
+      const result = await executor.runSkill(id, inputs, { surface: "local_human", timeBudgetMs: 90_000, narrationSink: (line) => console.error(line), humanGate: async (gate) => {
+        const terminal = createInterface({ input: process.stdin, output: process.stderr });
+        try {
+          if (gate.kind === "manual") { await terminal.question("Complete the sensitive browser step manually, then press Enter to re-check: "); return true; }
+          return (await terminal.question(`Sensitive action: ${gate.reason}. Type exactly APPROVE to continue: `)) === "APPROVE";
+        } finally { terminal.close(); }
+      } });
       if (!result) throw new Error(`Skill not found: ${id}`);
       for (const line of result.narration ?? []) console.error(line);
       console.log(JSON.stringify(result, null, 2));
@@ -48,9 +57,10 @@ try {
       break;
     }
     case "new": {
-      const file = required(args.shift(), "Usage: forge new <confirmed-artifact.skill.json>");
-      const imported = await registry.import(JSON.parse(await readFile(path.resolve(file), "utf8")));
-      console.log(`Skill forged: ${imported.skill.id} v${imported.skill.version}`);
+      const url = required(args.shift(), "Usage: forge new <url> <goal text>"); const goal_text = required(args.join(" "), "Usage: forge new <url> <goal text>");
+      const proposal = await forgeEngine.propose({ url, goal_text }); console.error(JSON.stringify(proposal.artifact, null, 2)); for (const question of proposal.questions) console.error(`Question: ${question}`);
+      const terminal = createInterface({ input: process.stdin, output: process.stderr }); const answer = await terminal.question("Type exactly CONFIRM to save this proposal: "); terminal.close(); if (answer !== "CONFIRM") { forgeEngine.discard(proposal.proposal_id); throw new Error("Proposal discarded without changing the registry."); }
+      const imported = await forgeEngine.confirm(proposal.proposal_id); console.log(JSON.stringify({ status: "forged", skill: imported }, null, 2));
       break;
     }
     case "doctor": {

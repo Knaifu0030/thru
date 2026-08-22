@@ -1,4 +1,17 @@
 export type RunContext = "local_human" | "rest" | "mcp";
+export interface HumanGateRequest {
+  readonly kind: "manual" | "approval";
+  readonly step: WorkflowStep;
+  readonly reason: string;
+  readonly approvalWord?: "APPROVE";
+}
+
+export interface RunExecutionContext {
+  readonly surface: RunContext;
+  readonly timeBudgetMs?: number;
+  readonly narrationSink?: (message: string) => void;
+  readonly humanGate?: (request: HumanGateRequest) => Promise<boolean>;
+}
 export type RunStatus =
   | "success"
   | "healed_success"
@@ -102,5 +115,15 @@ export interface RunEnvelope {
   readonly timing_ms: number;
   readonly narration?: readonly string[];
   readonly warnings?: readonly string[];
+  readonly steps?: readonly StepResult[];
 }
 
+export interface StepResult {
+  readonly step: string;
+  readonly action: WorkflowStep["action"];
+  readonly narration: string;
+  readonly selected_locator: string | null;
+  readonly expectation_met: boolean;
+  readonly drift: "none" | "network" | "hostile" | "missing" | "semantic" | "blocked" | "invalid_input" | "expectation";
+  readonly timing_ms: number;
+}

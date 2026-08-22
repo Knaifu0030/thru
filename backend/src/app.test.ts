@@ -10,6 +10,8 @@ import { createForgeServer } from "./app.js";
 import { SkillExecutor } from "./executor.js";
 import { MockPortal } from "./mock-portal.js";
 import { SkillRegistry } from "./registry.js";
+import { ForgeEngine } from "./forge-engine.js";
+import { RunManager } from "./run-manager.js";
 
 const allowedOrigin = "https://forge.example.vercel.app";
 let server: Server;
@@ -25,14 +27,16 @@ before(async () => {
   const fixture = JSON.parse(await readFile(path.resolve("skills/hell-check.skill.json"), "utf8"));
   await registry.import(fixture);
   mockPortal = new MockPortal();
-  const executor = new SkillExecutor(registry, mockPortal);
+  const executor = new SkillExecutor(registry);
+  const forgeEngine = new ForgeEngine(registry, null, async (url) => ({ url, title: "Test", headings: ["Test"], labels: [], inputs: [], buttons: [], tables: [] }));
+  const runManager = new RunManager(executor);
   server = createForgeServer({
     port: 0,
     version: "test",
     allowedOrigins: new Set([allowedOrigin]),
     skillsDirectory: testDirectory,
     adminKey: "test-admin-key",
-  }, { registry, executor, mockPortal });
+  }, { registry, executor, mockPortal, forgeEngine, runManager });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address() as AddressInfo;
@@ -69,10 +73,10 @@ test("preflight returns the exact CORS contract", async () => {
     headers: { Origin: allowedOrigin },
   });
   assert.equal(response.status, 204);
-  assert.equal(response.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
+  assert.equal(response.headers.get("access-control-allow-methods"), "GET, POST, DELETE, OPTIONS");
   assert.equal(
     response.headers.get("access-control-allow-headers"),
-    "Content-Type, X-Forge-Admin-Key",
+    "Content-Type, X-Forge-Admin-Key, Prefer",
   );
 });
 
@@ -202,4 +206,20 @@ test("admin routes fail closed when the key is absent", async () => {
     body: JSON.stringify({ variant: "v1" }),
   });
   assert.equal(response.status, 401);
+});
+
+test("Prefer respond-async returns a queued run that can be polled", async () => {
+  mockPortal.setVariant("v1");
+  const response = await fetch(`${baseUrl}/skills/hell-check`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "respond-async" }, body: JSON.stringify({ certificate: "DEMO-5678" }) });
+  assert.equal(response.status, 202); const queued = await response.json() as { id: string; state: string }; assert.ok(queued.id); assert.ok(["queued", "running"].includes(queued.state));
+  let state: { state: string; result?: { status: string } | null } = queued;
+  for (let attempt = 0; attempt < 30 && state.state !== "completed"; attempt++) { await new Promise((resolve) => setTimeout(resolve, 250)); state = await (await fetch(`${baseUrl}/runs/${queued.id}`)).json() as typeof state; }
+  assert.equal(state.state, "completed"); assert.ok(["success", "healed_success"].includes(state.result?.status ?? ""));
+});
+
+test("two-phase Forge keeps drafts unregistered until confirmation and hot-registers MCP", async () => {
+  const proposed = await fetch(`${baseUrl}/forge`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: JSON.stringify({ goal_text: "Read test page", url: "https://example.org" }) });
+  assert.equal(proposed.status, 201); const proposal = await proposed.json() as { proposal_id: string; artifact: { skill: { id: string } } }; assert.equal(registry.get(proposal.artifact.skill.id), undefined);
+  const confirmed = await fetch(`${baseUrl}/forge/${proposal.proposal_id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forge-Admin-Key": "test-admin-key" }, body: "{}" }); assert.equal(confirmed.status, 201); assert.ok(registry.get(proposal.artifact.skill.id));
+  const tools = await fetch(`${baseUrl}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" }, body: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/list", params: {} }) }); assert.match(await tools.text(), new RegExp(`forge_${proposal.artifact.skill.id.replaceAll("-", "_")}`));
 });

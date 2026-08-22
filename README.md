@@ -2,7 +2,7 @@
 
 Forge turns a learned website workflow into one portable Skill: a button for a human, a typed REST endpoint for a developer, and an MCP tool for an AI agent.
 
-The current build includes the production skeleton plus the functional MVP spine: flat-file Skill Registry, one shared executor, REST and MCP gateways, CLI, schema validation, safety gates, import/export, mock-site sabotage, and persistent healing history.
+The backend now uses one real Webcmd browser path for mock and public skills. It includes step evidence, bounded healing, human gates, an asynchronous one-browser queue, two-phase forging, optional Azure OpenAI structured proposals with deterministic fallback, REST/MCP/CLI parity, crash-safe registry writes, and persistent healing history.
 
 ## Local quickstart
 
@@ -44,9 +44,15 @@ The second call returns `needs_human` without executing its sensitive step. MCP 
 
 Admin routes require `X-Forge-Admin-Key`:
 
-- `POST /forge` with `{ "artifact": <skill object> }`
+- `POST /forge` with `{ "goal_text", "url", "sample_inputs?" }` creates a 15-minute unconfirmed proposal
+- `POST /forge/{proposal_id}` confirms an optional edited `{ "artifact" }`
+- `DELETE /forge/{proposal_id}` discards a proposal
 - `POST /registry/import` with a skill artifact
 - `POST /admin/sabotage` with `{ "variant": "v1" | "v2" | "v3" | "reset" }`
+
+Send `Prefer: respond-async` to a skill route for HTTP 202 and poll `GET /runs/{run_id}`. Synchronous REST calls automatically fall back to 202 before the gateway deadline.
+
+The baked public workflows are `example-reference`, `httpbin-document`, and `cern-history`; each passed 13 consecutive fresh Webcmd-session runs on 2026-08-22. Rejected candidates (Quotes to Scrape, Books to Scrape, and WorldTimeAPI) were not shipped because live expectations or connectivity failed.
 
 ## Production links
 
@@ -57,4 +63,4 @@ Deployment and verification instructions are in [deploy/GATE_0.md](deploy/GATE_0
 
 ## Security
 
-Secrets belong in Azure Container Apps secret references, never in source or frontend configuration. `FORGE_ADMIN_KEY` and `MODEL_API_KEY` are reserved for later feature gates; Gate 0 neither reads nor exposes them.
+Secrets belong in Azure Container Apps secret references, never in source or frontend configuration. Configure Azure model assistance with `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, and `AZURE_OPENAI_API_VERSION`. Model output is never saved before Forge artifact validation and explicit confirmation.
