@@ -1,0 +1,15 @@
+node_modules/
+backend/dist/
+.env
+.env.*
+!.env.example
+.vercel/
+.azure/
+coverage/
+*.log
+recordings/
+gate0-evidence/
+output/
+.playwright-cli/
+.webcmd/
+

@@ -1,0 +1,24 @@
+{
+  "name": "forge-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Forge production deploy skeleton",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "npm run build && node --test dist/**/*.test.js",
+    "check": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@agentrhq/webcmd": "0.7.4"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.11",
+    "typescript": "5.9.2"
+  }
+}
+
