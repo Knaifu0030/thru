@@ -25,6 +25,8 @@ Complete documentation for THRU: the YC-grade product vision, the full product s
 | 10 | `10_HACKATHON_COMPLIANCE.md` | SLAB/CAADS rules, judging map, submission checklist, deadlines | You (team lead) |
 | 11 | `11_ROADMAP_AND_BUSINESS.md` | Post-MVP roadmap, business model, GTM, YC-application-style answers | Founder |
 | 12 | `12_DEPLOYMENT.md` | **PRODUCTION HOSTING: Azure Container Apps (backend) + Vercel (frontend). Read this before Prompt A — it changes the architecture** | Coding agent, first day |
+| 13 | `13_CODEBASE_STATUS.md` | Current implementation map, runtime paths, verification evidence, and boundaries | Everyone |
+| 14 | `14_GAPS_AND_NEXT_STEPS.md` | Prioritized recovery backlog and delivery milestones | Team lead + coding agent |
 
 ## The Product in One Paragraph
 

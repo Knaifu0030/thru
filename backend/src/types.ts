@@ -11,6 +11,8 @@ export interface RunExecutionContext {
   readonly timeBudgetMs?: number;
   readonly narrationSink?: (message: string) => void;
   readonly humanGate?: (request: HumanGateRequest) => Promise<boolean>;
+  /** Short-lived server-issued approval handoff. Never accepted directly from clients. */
+  readonly approval?: { readonly runId: string; readonly approvalId: string };
 }
 export type RunStatus =
   | "success"
@@ -41,11 +43,12 @@ export interface Expectation {
 
 export interface WorkflowStep {
   readonly id: string;
-  readonly action: "navigate" | "fill" | "click" | "extract";
+  readonly action: "navigate" | "fill" | "click" | "extract" | "wait" | "switch_tab" | "switch_frame";
   readonly target_description: string;
   readonly url?: string;
   readonly selector_primary?: string;
   readonly selector_fallbacks?: readonly string[];
+  readonly wait_ms?: number;
   readonly value_from?: string;
   readonly extraction?: {
     readonly strategy: "header_map" | "json_element";

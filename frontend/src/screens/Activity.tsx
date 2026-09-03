@@ -12,6 +12,7 @@ const FILTERS: Array<{ id: "all" | ActivityKind; label: string }> = [
   { id: "run", label: "Runs" },
   { id: "heal", label: "Heals" },
   { id: "gate", label: "Gates fired" },
+  { id: "teaching", label: "Teaching" },
 ];
 
 const KIND_BADGE: Record<ActivityKind, { tone: "neutral" | "sage" | "rose" | "accent"; label: string }> = {
@@ -19,6 +20,7 @@ const KIND_BADGE: Record<ActivityKind, { tone: "neutral" | "sage" | "rose" | "ac
   heal: { tone: "sage", label: "Heal" },
   gate: { tone: "rose", label: "Gate" },
   forged: { tone: "accent", label: "Created" },
+  teaching: { tone: "accent", label: "Teaching" },
 };
 
 /** Left border marks the event class without shouting — heals sage, gates rose. */
@@ -33,6 +35,7 @@ export function Activity() {
   const { openSkill } = useUI();
   const [events, setEvents] = useState<ActivityEvent[] | null>(null);
   const [filter, setFilter] = useState<"all" | ActivityKind>("all");
+  const [decisions, setDecisions] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let stale = false;
@@ -46,6 +49,11 @@ export function Activity() {
   }, [skills]);
 
   const filtered = (events ?? []).filter((e) => filter === "all" || e.kind === filter);
+  const decide = async (event: ActivityEvent, decision: "approved" | "denied") => {
+    if (!event.runId) return;
+    try { await api.recordGateApproval(event.runId, decision, "Recorded from THRU activity."); setDecisions((current) => ({ ...current, [event.id]: decision })); }
+    catch (error) { setDecisions((current) => ({ ...current, [event.id]: error instanceof Error ? error.message : "Approval failed." })); }
+  };
 
   return (
     <div className="space-y-5">
@@ -88,17 +96,13 @@ export function Activity() {
                 <span className="w-16 shrink-0">
                   <Badge tone={badge.tone}>{badge.label}</Badge>
                 </span>
-                <p className="min-w-0 text-sm text-muted">
-                  <button
-                    type="button"
-                    onClick={() => openSkill(event.skillId)}
-                    className="text-ink transition-colors duration-200 hover:text-accent"
-                  >
-                    {event.skillName}
-                  </button>
+                <div className="min-w-0 flex-1 text-sm text-muted">
+                  {event.skillId === "teaching" ? <span className="text-ink">Teaching session</span> : <button type="button" onClick={() => openSkill(event.skillId)} className="text-ink transition-colors duration-200 hover:text-accent">{event.skillName}</button>}
                   <span className="mx-1.5 text-faint">·</span>
                   {event.summary}
-                </p>
+                  {event.gatePending && event.runId && !decisions[event.id] && <div className="mt-2 flex gap-2"><button type="button" onClick={() => void decide(event, "approved")} className="rounded border border-emerald/30 px-2 py-1 text-[11px] text-emerald hover:bg-emerald/10">Record approval</button><button type="button" onClick={() => void decide(event, "denied")} className="rounded border border-rose/30 px-2 py-1 text-[11px] text-rose hover:bg-rose/10">Record denial</button></div>}
+                  {decisions[event.id] && <p className="mt-1 text-[11px] text-faint">{decisions[event.id] === "approved" || decisions[event.id] === "denied" ? `Decision recorded: ${decisions[event.id]}.` : decisions[event.id]}</p>}
+                </div>
               </div>
             );
           })

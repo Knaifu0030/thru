@@ -1,9 +1,8 @@
 /**
  * Contract types. The first block mirrors backend/src/types.ts verbatim —
  * these are the shapes the REST gateway and MCP server actually return.
- * The second block is app-level data the backend has no endpoints for yet
- * (dashboard summary, activity, gateway info, keys); api.ts derives those
- * from the registry until the gateway grows them.
+ * The second block is app-level view data assembled from gateway endpoints
+ * (dashboard summary, activity, gateway info, and key-management views).
  */
 
 /* ── Backend contract ─────────────────────────────────────────────────── */
@@ -37,11 +36,12 @@ export interface Expectation {
 
 export interface WorkflowStep {
   id: string;
-  action: "navigate" | "fill" | "click" | "extract";
+  action: "navigate" | "fill" | "click" | "extract" | "wait" | "switch_tab" | "switch_frame";
   target_description: string;
   url?: string;
   selector_primary?: string;
   selector_fallbacks?: string[];
+  wait_ms?: number;
   value_from?: string;
   extraction?: { strategy: "header_map" | "json_element"; map_to: string; selector?: string };
   expect: Expectation;
@@ -120,7 +120,7 @@ export interface RunEnvelope {
 export interface ManagedRun {
   id: string;
   skill: string;
-  state: "queued" | "running" | "completed" | "failed";
+  state: "queued" | "running" | "completed" | "failed" | "cancelled";
   position: number;
   created_at: string;
   started_at: string | null;
@@ -137,7 +137,7 @@ export interface HealthInfo {
 
 /* ── App-level data ───────────────────────────────────────────────────── */
 
-export type ActivityKind = "run" | "heal" | "gate" | "forged";
+export type ActivityKind = "run" | "heal" | "gate" | "forged" | "teaching";
 
 export interface ActivityEvent {
   id: string;
@@ -146,6 +146,8 @@ export interface ActivityEvent {
   skillId: string;
   skillName: string;
   summary: string;
+  runId?: string;
+  gatePending?: boolean;
 }
 
 export interface ConnectedAgent {
@@ -166,6 +168,7 @@ export interface ApiKey {
   maskedValue: string;
   createdAt: string;
   lastUsedAt: string | null;
+  scopes?: string[];
 }
 
 export type ChartRange = "1D" | "1W" | "1M" | "6M" | "1Y";
@@ -180,8 +183,8 @@ export interface DashboardSummary {
   trendPct: number | null;
   totalSkills: number;
   healEventsThisWeek: number;
-  timeSavedHrs: number;
-  /** true when the gateway doesn't record run history and the series is an estimate */
+  timeSavedHrs: number | null;
+  /** true only when the gateway cannot provide a real event series */
   estimatedSeries: boolean;
   series: Record<ChartRange, SeriesPoint[]>;
   recentSkillIds: string[];
@@ -197,11 +200,28 @@ export interface THRUQuestion {
 export interface THRUHandlers {
   onLine: (line: string) => void;
   onQuestion: (q: THRUQuestion) => void;
+  onDraft: (artifact: SkillArtifact) => void;
   onDone: (skill: SkillArtifact) => void;
   onError: (message: string) => void;
 }
 
 export interface THRUController {
   answer: (choice: string) => void;
+  editDraft: (artifact: SkillArtifact) => void;
   cancel: () => void;
+}
+
+export type TeachingActionType = "navigate" | "fill" | "click" | "extract" | "wait" | "switch_tab" | "switch_frame";
+
+export interface TeachingActionInput {
+  type: TeachingActionType;
+  target: string;
+  value?: string;
+  evidence?: {
+    url?: string;
+    title?: string;
+    selector?: string;
+    text?: string;
+    screenshot_ref?: string;
+  };
 }

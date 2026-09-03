@@ -45,8 +45,8 @@ az group create --name thru-rg --location centralindia
 az acr create --name $THRURegistry --resource-group thru-rg --sku Basic --admin-enabled true
 az acr build --registry $THRURegistry --image thru-backend:gate0 -f backend/Dockerfile .
 az containerapp env create --name thru-env --resource-group thru-rg --location centralindia
-az containerapp create --name thru-backend --resource-group thru-rg --environment thru-env --image "$THRURegistry.azurecr.io/thru-backend:gate0" --registry-server "$THRURegistry.azurecr.io" --target-port 8080 --ingress external --min-replicas 1 --max-replicas 2 --cpu 1.0 --memory 2.0Gi --env-vars THRU_ALLOWED_ORIGINS=http://localhost:3000
-az containerapp show --name thru-backend --resource-group thru-rg --query properties.configuration.ingress.fqdn -o tsv
+az containerapp create --name forge-backend --resource-group forge-rg --environment forge-env --image "$THRURegistry.azurecr.io/thru-backend:gate0" --registry-server "$THRURegistry.azurecr.io" --target-port 8080 --ingress external --min-replicas 1 --max-replicas 1 --cpu 1.0 --memory 2.0Gi --env-vars THRU_ALLOWED_ORIGINS=http://localhost:3000
+az containerapp show --name forge-backend --resource-group forge-rg --query properties.configuration.ingress.fqdn -o tsv
 ```
 
 Record the FQDN as `https://<fqdn>` and verify `GET /health`.
@@ -63,7 +63,7 @@ vercel --cwd frontend --prod
 Capture the stable production origin, then restrict Azure CORS to it:
 
 ```powershell
-az containerapp update --name thru-backend --resource-group thru-rg --set-env-vars THRU_ALLOWED_ORIGINS=https://<project>.vercel.app
+az containerapp update --name forge-backend --resource-group forge-rg --set-env-vars THRU_ALLOWED_ORIGINS=https://<project>.vercel.app
 ```
 
 ## Evidence and acceptance

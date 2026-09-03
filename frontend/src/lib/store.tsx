@@ -14,7 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { THRUQuestion, SkillArtifact } from "./types";
+import type { THRUQuestion, SkillArtifact, TeachingActionInput } from "./types";
 import type { DraftIdentity } from "./naming";
 import { deriveDraft } from "./naming";
 import { api } from "./api";
@@ -79,14 +79,16 @@ export interface THRUSession {
   lines: string[];
   question: THRUQuestion | null;
   draft: DraftIdentity;
+  draftArtifact: SkillArtifact | null;
   skill: SkillArtifact | null;
   error: string | null;
 }
 
 interface THRUState {
   session: THRUSession | null;
-  start: (goal: string, url: string) => void;
+  start: (goal: string, url: string, sampleInputs?: Record<string, unknown>, guidedActions?: TeachingActionInput[]) => void;
   answer: (choice: string) => void;
+  editDraft: (artifact: SkillArtifact) => void;
   cancel: () => void;
   /** Clears a finished session (after the card has settled into the grid). */
   finish: () => void;
@@ -108,16 +110,17 @@ export function THRUProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const start = useCallback(
-    (goal: string, url: string) => {
+    (goal: string, url: string, sampleInputs?: Record<string, unknown>, guidedActions?: TeachingActionInput[]) => {
       if (controller.current) return; // one teaching session at a time — mirrors the backend
       const draft = deriveDraft(goal, url);
-      setSession({ stage: "narrating", lines: [], question: null, draft, skill: null, error: null });
-      controller.current = api.teachSkill(goal, url, {
+      setSession({ stage: "narrating", lines: [], question: null, draft, draftArtifact: null, skill: null, error: null });
+      controller.current = api.teachSkill(goal, url, sampleInputs, guidedActions, {
         onLine: (line) =>
           setSession((s) =>
             s ? { ...s, lines: [...s.lines, line], question: null, stage: "narrating" } : s,
           ),
         onQuestion: (q) => setSession((s) => (s ? { ...s, question: q, stage: "question" } : s)),
+        onDraft: (artifact) => setSession((s) => (s ? { ...s, draftArtifact: artifact } : s)),
         onDone: (skill) => {
           refresh();
           setSession((s) => (s ? { ...s, skill, stage: "done", question: null } : s));
@@ -141,14 +144,19 @@ export function THRUProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const editDraft = useCallback((artifact: SkillArtifact) => {
+    controller.current?.editDraft(artifact);
+    setSession((s) => (s ? { ...s, draftArtifact: artifact } : s));
+  }, []);
+
   const cancel = useCallback(() => {
     controller.current?.cancel();
     finish();
   }, [finish]);
 
   const value = useMemo<THRUState>(
-    () => ({ session, start, answer, cancel, finish }),
-    [session, start, answer, cancel, finish],
+    () => ({ session, start, answer, editDraft, cancel, finish }),
+    [session, start, answer, editDraft, cancel, finish],
   );
 
   return <THRUContext.Provider value={value}>{children}</THRUContext.Provider>;

@@ -20,13 +20,31 @@ export class SkillExecutor {
     try { return await this.#run(id, rawInputs, context); } finally { release(); }
   }
 
+  /** Executes an unpublished teaching draft without mutating the registry or its vitals. */
+  async previewArtifact(skill: SkillArtifact, rawInputs: unknown, context: RunExecutionContext): Promise<RunEnvelope> {
+    const previous = this.#tail; let release = (): void => undefined;
+    this.#tail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    const started = performance.now();
+    try {
+      const validation = validateInputs(skill, rawInputs);
+      if (!validation.ok) return envelope(skill, "invalid_input", null, [], null, started, validation.errors);
+      const sensitiveStep = skill.workflow.steps.find((step) => step.sensitive);
+      if (sensitiveStep && context.surface !== "local_human") return envelope(skill, "needs_human", null, [], { reason: sensitiveStep.target_description, how: "Sensitive teaching drafts must be validated by a local human." }, started, validation.warnings);
+      const executed = await runWithWebcmd(skill, validation.inputs, context, this.#internalBaseUrl);
+      const outputs = executed.status === "success" || executed.status === "healed_success" ? validateOutputs(skill, executed.data) : { ok: true as const };
+      if (!outputs.ok) return envelope(skill, "portal_error", null, [], null, started, outputs.errors, executed.narration);
+      return { ...envelope(skill, executed.status, executed.data, executed.healing, executed.needsHuman ? { reason: executed.needsHuman, how: "Review the teaching draft manually." } : null, started, validation.warnings, executed.narration), steps: executed.steps };
+    } finally { release(); }
+  }
+
   async #run(id: string, rawInputs: unknown, context: RunExecutionContext): Promise<RunEnvelope | undefined> {
     const started = performance.now(); const skill = this.#registry.get(id); if (!skill) return undefined;
     const validation = validateInputs(skill, rawInputs);
     if (!validation.ok) return envelope(skill, "invalid_input", null, [], null, started, validation.errors);
     const sensitiveStep = skill.workflow.steps.find((step) => step.sensitive);
     if (sensitiveStep && context.surface !== "local_human") return envelope(skill, "needs_human", null, [], { reason: sensitiveStep.target_description, how: `Run locally: thru run ${id}; a human must approve this step.` }, started, validation.warnings);
-    if (sensitiveStep) {
+    if (sensitiveStep && !context.approval) {
       const manual = isManualGate(sensitiveStep);
       const approved = await context.humanGate?.({ kind: manual ? "manual" : "approval", step: sensitiveStep, reason: sensitiveStep.target_description, ...(manual ? {} : { approvalWord: "APPROVE" as const }) });
       if (!approved) return envelope(skill, "needs_human", null, [], { reason: sensitiveStep.target_description, how: manual ? "Complete the browser step manually, then resume." : "Type exactly APPROVE to continue." }, started, validation.warnings);

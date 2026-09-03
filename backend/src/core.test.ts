@@ -10,8 +10,10 @@ import { AzureOpenAITHRUModel, type THRUModel } from "./forge-model.js";
 import { SkillRegistry } from "./registry.js";
 import { validateArtifact, validateOutputs } from "./skill-validation.js";
 import type { SkillArtifact } from "./types.js";
-import { RunManager } from "./run-manager.js";
+import { RunManager, RunQueueFullError } from "./run-manager.js";
 import type { SkillExecutor } from "./executor.js";
+import { ApiKeyStore } from "./key-store.js";
+import type { DatabaseRuntime } from "./database.js";
 
 async function fixture(): Promise<SkillArtifact> { return JSON.parse(await readFile(path.resolve("skills/hell-check.skill.json"), "utf8")) as SkillArtifact; }
 
@@ -44,6 +46,65 @@ test("run queue is single-browser FIFO and exposes positions", async () => {
   const order: string[] = []; const fake = { runSkill: async (id: string) => { order.push(`start:${id}`); await new Promise((resolve) => setTimeout(resolve, 20)); order.push(`end:${id}`); return { skill: id, version: 1, status: "success", data: {}, healing: [], needs_human: null, timing_ms: 20 }; } } as unknown as SkillExecutor; const manager = new RunManager(fake); const first = manager.submit("one", {}, { surface: "rest" }); const second = manager.submit("two", {}, { surface: "rest" }); assert.ok(second.run.position >= 1); await Promise.all([first.completion, second.completion]); assert.deepEqual(order, ["start:one", "end:one", "start:two", "end:two"]); assert.equal(manager.get(second.run.id)?.state, "completed");
 });
 
+test("run queue enforces bounded backpressure and exposes operational metrics", async () => {
+  const fake = { runSkill: async (id: string) => ({ skill: id, version: 1, status: "success", data: {}, healing: [], needs_human: null, timing_ms: 1 }) } as unknown as SkillExecutor;
+  const manager = new RunManager(fake, undefined, 30, undefined, 1);
+  const first = manager.submit("one", {}, { surface: "rest" });
+  assert.throws(() => manager.submit("two", {}, { surface: "rest" }), RunQueueFullError);
+  assert.equal(manager.metrics().limit, 1);
+  assert.equal(manager.metrics().queue_depth, 1);
+  await first.completion;
+  assert.equal(manager.metrics().queue_depth, 0);
+});
+
+test("portal failures retry once with persisted attempt state", async () => {
+  let attempts = 0;
+  const fake = { runSkill: async () => { attempts += 1; return attempts === 1
+    ? { skill: "one", version: 1, status: "portal_error", data: null, healing: [], needs_human: null, timing_ms: 1 }
+    : { skill: "one", version: 1, status: "success", data: {}, healing: [], needs_human: null, timing_ms: 1 }; } } as unknown as SkillExecutor;
+  const manager = new RunManager(fake);
+  const submitted = manager.submit("one", {}, { surface: "rest" });
+  const completed = await submitted.completion;
+  assert.equal(attempts, 2);
+  assert.equal(completed.state, "completed");
+  assert.equal(completed.attempts, 2);
+  assert.ok(completed.events.some((event) => event.type === "retry"));
+});
+
+test("durable queued runs are re-queued after a worker restart", async () => {
+  const runId = "11111111-1111-4111-8111-111111111111";
+  let executed = 0;
+  const fake = { runSkill: async (_id: string, inputs: unknown) => { executed += 1; assert.deepEqual(inputs, { certificate: "RECOVER" }); return { skill: "hell-check", version: 1, status: "success", data: {}, healing: [], needs_human: null, timing_ms: 1 }; } } as unknown as SkillExecutor;
+  const pool = {
+    query: async (sql: string) => {
+      if (sql.startsWith("select id, skill_id")) return { rows: [{ id: runId, skill_id: "hell-check", idempotency_key: "restart-proof", state: "running", inputs: { certificate: "RECOVER" }, created_at: new Date(Date.now() - 1000), started_at: new Date(Date.now() - 900), completed_at: null, result: null, error: null }] };
+      if (sql.startsWith("select run_id")) return { rows: [{ run_id: runId, type: "started", payload: {}, created_at: new Date(Date.now() - 900) }] };
+      if (sql.startsWith("select pg_try_advisory_lock")) return { rows: [{ locked: true }] };
+      if (sql.startsWith("update runs set state = 'running'")) return { rows: [{ id: runId }] };
+      return { rows: [] };
+    },
+    connect: async () => ({ query: async () => ({ rows: [] }), release: () => {} }),
+  } as unknown as DatabaseRuntime["pool"];
+  const database = { status: "ready", pool, close: async () => {} } as DatabaseRuntime;
+  const manager = new RunManager(fake, undefined, 30, database);
+  await manager.ready();
+  for (let attempt = 0; attempt < 20 && manager.get(runId)?.state !== "completed"; attempt++) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(executed, 1);
+  assert.equal(manager.get(runId)?.state, "completed");
+  assert.ok(manager.get(runId)?.events.some((event) => event.message?.includes("worker restart")));
+});
+
+test("active cancellation remains cancelled after the browser step returns", async () => {
+  const fake = { runSkill: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); return { skill: "one", version: 1, status: "success", data: {}, healing: [], needs_human: null, timing_ms: 30 }; } } as unknown as SkillExecutor;
+  const manager = new RunManager(fake);
+  const submitted = manager.submit("one", {}, { surface: "rest" });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await manager.cancel(submitted.run.id);
+  const completed = await submitted.completion;
+  assert.equal(completed.state, "cancelled");
+  assert.match(completed.events.at(-1)?.message ?? "", /cancelled/i);
+});
+
 test("Azure OpenAI provider requests structured output and rejects malformed JSON", async () => {
   const original = globalThis.fetch; let requestBody: unknown;
   try {
@@ -53,6 +114,14 @@ test("Azure OpenAI provider requests structured output and rejects malformed JSO
   } finally { globalThis.fetch = original; }
 });
 
-test("distribution contains exactly the seven MVP and demo artifacts", async () => {
-  const files = (await readdir(path.resolve("skills"))).filter((name) => name.endsWith(".skill.json")).sort(); assert.deepEqual(files, ["cern-history.skill.json", "example-reference.skill.json", "hell-check.skill.json", "httpbin-document.skill.json", "nadakacheri-check-status.skill.json", "nadakacheri-prepare-income.skill.json", "sensitive-submit.skill.json"]);
+test("distribution contains exactly the five THRU artifacts", async () => {
+  const files = (await readdir(path.resolve("skills"))).filter((name) => name.endsWith(".skill.json")).sort(); assert.deepEqual(files, ["cern-history.skill.json", "example-reference.skill.json", "hell-check.skill.json", "httpbin-document.skill.json", "sensitive-submit.skill.json"]);
+});
+
+test("API keys persist hashed values and revoke immediately", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "thru-keys-"));
+  const store = new ApiKeyStore(path.join(directory, "keys.json")); await store.ready();
+  const created = await store.create("integration"); assert.equal(store.list().length, 1); assert.ok(await store.authenticate(created.value));
+  const raw = await readFile(path.join(directory, "keys.json"), "utf8"); assert.match(raw, /\"hash\"/); assert.doesNotMatch(raw, new RegExp(created.value));
+  assert.equal(await store.revoke(created.key.id), true); assert.equal(await store.authenticate(created.value), null);
 });

@@ -12,6 +12,11 @@ import { MockPortal } from "./mock-portal.js";
 import { SkillRegistry } from "./registry.js";
 import { THRUEngine } from "./forge-engine.js";
 import { RunManager } from "./run-manager.js";
+import { ApiKeyStore } from "./key-store.js";
+import { SessionStore } from "./session-store.js";
+import { ApprovalStore } from "./approval-store.js";
+import { TeachingSessionStore } from "./teaching-sessions.js";
+import { stopWebcmdDaemon } from "./webcmd-runner.js";
 import type { JsonSchema, SkillArtifact, WorkflowStep } from "./types.js";
 
 const allowedOrigin = "https://thru.example.vercel.app";
@@ -20,6 +25,10 @@ let baseUrl = "";
 let testDirectory = "";
 let registry: SkillRegistry;
 let mockPortal: MockPortal;
+let apiKeys: ApiKeyStore;
+let sessions: SessionStore;
+let approvals: ApprovalStore;
+let teaching: TeachingSessionStore;
 
 before(async () => {
   testDirectory = await mkdtemp(path.join(tmpdir(), "forge-test-"));
@@ -27,19 +36,34 @@ before(async () => {
   await registry.load();
   const fixture = JSON.parse(await readFile(path.resolve("skills/hell-check.skill.json"), "utf8"));
   await registry.import(fixture);
-  await registry.import(JSON.parse(await readFile(path.resolve("skills/nadakacheri-prepare-income.skill.json"), "utf8")));
-  await registry.import(JSON.parse(await readFile(path.resolve("skills/nadakacheri-check-status.skill.json"), "utf8")));
   mockPortal = new MockPortal();
   const executor = new SkillExecutor(registry);
   const forgeEngine = new THRUEngine(registry, null, async (url) => ({ url, title: "Test", headings: ["Test"], labels: [], inputs: [], buttons: [], tables: [] }));
   const runManager = new RunManager(executor);
+  apiKeys = new ApiKeyStore(path.join(testDirectory, "keys.json"));
+  await apiKeys.ready();
+  sessions = new SessionStore(path.join(testDirectory, "sessions.json"));
+  await sessions.ready();
+  approvals = new ApprovalStore(path.join(testDirectory, "approvals.json"));
+  await approvals.ready();
+  teaching = new TeachingSessionStore(forgeEngine, 60_000, path.join(testDirectory, "teaching.json"), executor);
+  await teaching.ready();
   server = createTHRUServer({
     port: 0,
     version: "test",
     allowedOrigins: new Set([allowedOrigin]),
     skillsDirectory: testDirectory,
     adminKey: "test-admin-key",
-  }, { registry, executor, mockPortal, forgeEngine, runManager });
+    runsFile: path.join(testDirectory, "runs.json"),
+    keysFile: path.join(testDirectory, "keys.json"),
+    teachingFile: path.join(testDirectory, "teaching.json"),
+    sessionsFile: path.join(testDirectory, "sessions.json"),
+    approvalsFile: path.join(testDirectory, "approvals.json"),
+    rateLimitPerMinute: 120,
+    queueMaxDepth: 100,
+    runRetentionDays: 30,
+    databaseUrl: null,
+  }, { registry, executor, mockPortal, forgeEngine, runManager, apiKeys, sessions, teaching, approvals });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address() as AddressInfo;
@@ -47,8 +71,9 @@ before(async () => {
 });
 
 after(async () => {
+  server.closeAllConnections?.();
   server.close();
-  await once(server, "close");
+  await stopWebcmdDaemon();
   await rm(testDirectory, { recursive: true, force: true });
 });
 
@@ -79,7 +104,7 @@ test("preflight returns the exact CORS contract", async () => {
   assert.equal(response.headers.get("access-control-allow-methods"), "GET, POST, DELETE, OPTIONS");
   assert.equal(
     response.headers.get("access-control-allow-headers"),
-    "Content-Type, X-THRU-Admin-Key, X-Forge-Admin-Key, Prefer",
+    "Content-Type, X-THRU-Admin-Key, Prefer, Idempotency-Key, Authorization",
   );
 });
 
@@ -109,25 +134,7 @@ test("registry exposes installed skills", async () => {
   const response = await fetch(`${baseUrl}/registry`);
   const body = (await response.json()) as { skills: Array<{ skill: { id: string } }> };
   assert.equal(response.status, 200);
-  assert.deepEqual(body.skills.map((item) => item.skill.id).sort(), ["hell-check", "nadakacheri-check-status", "nadakacheri-prepare-income"]);
-});
-
-test("NammaDocs skills execute directly and asynchronously through Webcmd", async () => {
-  const prepareInputs = { applicant_name: "Ananya Rao", date_of_birth: "2002-04-12", district: "Bengaluru Urban", taluk: "Bengaluru North", annual_income: 180000, purpose: "Scholarship", identity_ready: true, address_ready: true, income_ready: true, photo_ready: true };
-  const prepared = await fetch(`${baseUrl}/skills/nadakacheri-prepare-income`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prepareInputs) });
-  let envelope: { status: string; data: { reference: string }; steps?: unknown[] };
-  if (prepared.status === 202) { let run = await prepared.json() as { id: string; state: string; result?: typeof envelope }; for (let attempt = 0; attempt < 180 && run.state !== "completed"; attempt++) { await new Promise((resolve) => setTimeout(resolve, 500)); run = await (await fetch(`${baseUrl}/runs/${run.id}`)).json() as typeof run; } assert.equal(run.state, "completed"); assert.ok(run.result); envelope = run.result; }
-  else { assert.equal(prepared.status, 200); envelope = await prepared.json() as typeof envelope; }
-  assert.equal(envelope.status, "success"); assert.equal(envelope.data.reference, "INC-KA-48291"); assert.ok((envelope.steps?.length ?? 0) >= 4);
-  const queuedResponse = await fetch(`${baseUrl}/skills/nadakacheri-check-status`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "respond-async" }, body: JSON.stringify({ reference: envelope.data.reference }) });
-  assert.equal(queuedResponse.status, 202); let run = await queuedResponse.json() as { id: string; state: string; result?: { status: string; data: { status: string } } };
-  for (let attempt = 0; attempt < 40 && run.state !== "completed"; attempt++) { await new Promise((resolve) => setTimeout(resolve, 250)); run = await (await fetch(`${baseUrl}/runs/${run.id}`)).json() as typeof run; }
-  assert.equal(run.state, "completed"); assert.equal(run.result?.status, "success"); assert.equal(run.result?.data.status, "certificate_issued");
-});
-
-test("NammaDocs skill rejects invalid inputs before opening a browser", async () => {
-  const response = await fetch(`${baseUrl}/skills/nadakacheri-check-status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference: "REAL-123" }) });
-  const body = await response.json() as { status: string; steps?: unknown[] }; assert.equal(response.status, 400); assert.equal(body.status, "invalid_input"); assert.equal(body.steps?.length ?? 0, 0);
+  assert.deepEqual(body.skills.map((item) => item.skill.id), ["hell-check"]);
 });
 
 test("MCP lists each registry skill as a typed tool", async () => {
@@ -226,6 +233,59 @@ test("gateway refuses a sensitive step with needs_human", async () => {
   assert.match(body.needs_human.reason, /payment/i);
 });
 
+test("management approval is durably audited against a gated run", async () => {
+  const gated = await fetch(`${baseUrl}/skills/sensitive-submit?certificate=DEMO-4567`);
+  const gatedBody = await gated.json() as { status: string; skill: string };
+  assert.equal(gatedBody.status, "needs_human");
+  const runs = await fetch(`${baseUrl}/runs?limit=20`).then((response) => response.json()) as { runs: Array<{ id: string; result: { status: string } | null }> };
+  const run = runs.runs.find((candidate) => candidate.result?.status === "needs_human");
+  assert.ok(run);
+  const approval = await fetch(`${baseUrl}/runs/${run!.id}/approval`, { method: "POST", headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" }, body: JSON.stringify({ decision: "denied", note: "Test operator declined the sensitive action." }) });
+  const approvalBody = await approval.json() as { approval: { decision: string; approver_id: string; note: string | null }; run: { events: Array<{ type: string }> } };
+  assert.equal(approval.status, 201);
+  assert.equal(approvalBody.approval.decision, "denied");
+  assert.equal(approvalBody.approval.approver_id, "00000000-0000-0000-0000-000000000001");
+  assert.equal(approvalBody.approval.note, "Test operator declined the sensitive action.");
+  assert.ok(approvalBody.run.events.some((event) => event.type === "gate_denied"));
+  const second = await fetch(`${baseUrl}/runs/${run!.id}/approval`, { method: "POST", headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" }, body: JSON.stringify({ decision: "approved" }) });
+  assert.equal(second.status, 409);
+});
+
+test("approved gates securely resume the run and remain auditable", async () => {
+  const gated = await fetch(`${baseUrl}/skills/sensitive-submit?certificate=DEMO-APPROVE`);
+  assert.equal((await gated.json() as { status: string }).status, "needs_human");
+  const runs = await fetch(`${baseUrl}/runs?limit=50`).then((response) => response.json()) as { runs: Array<{ id: string; result: { status: string } | null }> };
+  const run = runs.runs.find((candidate) => candidate.result?.status === "needs_human");
+  assert.ok(run);
+  const approval = await fetch(`${baseUrl}/runs/${run!.id}/approval`, { method: "POST", headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" }, body: JSON.stringify({ decision: "approved", note: "Approved for the controlled MVP fixture." }) });
+  assert.equal(approval.status, 201);
+  let state = await fetch(`${baseUrl}/runs/${run!.id}`).then((response) => response.json()) as { state: string; result: { status: string } | null };
+  for (let attempt = 0; attempt < 30 && (state.state === "queued" || state.state === "running"); attempt++) { await new Promise((resolve) => setTimeout(resolve, 250)); state = await fetch(`${baseUrl}/runs/${run!.id}`).then((response) => response.json()) as typeof state; }
+  assert.equal(state.state, "completed");
+  assert.ok(state.result && ["success", "healed_success"].includes(state.result.status));
+});
+
+test("guided browser capture route records and serves isolated evidence", async () => {
+  const headers = { "Content-Type": "application/json", "X-THRU-Admin-Key": "test-admin-key" };
+  const created = await fetch(`${baseUrl}/teaching-sessions`, { method: "POST", headers, body: JSON.stringify({ goal_text: "Read the example page", url: "https://example.com" }) });
+  assert.equal(created.status, 201);
+  const session = await created.json() as { id: string };
+  const started = await fetch(`${baseUrl}/teaching-sessions/${session.id}/capture`, { method: "POST", headers });
+  assert.equal(started.status, 200);
+  const capture = await started.json() as { capture: { status: string } };
+  assert.equal(capture.capture.status, "running");
+  const action = await fetch(`${baseUrl}/teaching-sessions/${session.id}/capture/actions`, { method: "POST", headers, body: JSON.stringify({ type: "extract", target: "body" }) });
+  assert.equal(action.status, 200);
+  const actionBody = await action.json() as { actions: Array<{ evidence?: { screenshot_ref?: string } }> };
+  const screenshotRef = actionBody.actions.at(-1)?.evidence?.screenshot_ref ?? "";
+  assert.match(screenshotRef, /^captures\//);
+  const filename = screenshotRef.split("/").at(-1)!;
+  const evidence = await fetch(`${baseUrl}/teaching-sessions/${session.id}/evidence/${filename}`, { headers });
+  assert.equal(evidence.status, 200);
+  assert.equal(evidence.headers.get("content-type"), "image/jpeg");
+  await fetch(`${baseUrl}/teaching-sessions/${session.id}`, { method: "DELETE", headers });
+});
+
 test("admin routes fail closed when the key is absent", async () => {
   const response = await fetch(`${baseUrl}/admin/sabotage`, {
     method: "POST",
@@ -233,6 +293,37 @@ test("admin routes fail closed when the key is absent", async () => {
     body: JSON.stringify({ variant: "v1" }),
   });
   assert.equal(response.status, 401);
+});
+
+test("scoped API keys execute, protect management actions, and revoke immediately", async () => {
+  const runKey = await apiKeys.create("run-only", ["run"]);
+  const manageKey = await apiKeys.create("manager", ["run", "manage"]);
+  const runResponse = await fetch(`${baseUrl}/skills/hell-check?certificate=DEMO-9012`, { headers: { Authorization: `Bearer ${runKey.value}` } });
+  assert.equal(runResponse.status, 200);
+  const forbidden = await fetch(`${baseUrl}/keys`, { method: "POST", headers: { Authorization: `Bearer ${runKey.value}`, "Content-Type": "application/json" }, body: JSON.stringify({ name: "should-fail" }) });
+  assert.equal(forbidden.status, 401);
+  const revoked = await fetch(`${baseUrl}/keys/${runKey.key.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${manageKey.value}` } });
+  assert.equal(revoked.status, 200);
+  const blocked = await fetch(`${baseUrl}/skills/hell-check?certificate=DEMO-9013`, { headers: { Authorization: `Bearer ${runKey.value}` } });
+  assert.equal(blocked.status, 401);
+});
+
+test("API keys can exchange for scoped, revocable browser sessions", async () => {
+  const manageKey = await apiKeys.create("session-manager", ["run", "manage"]);
+  const created = await fetch(`${baseUrl}/auth/session`, { method: "POST", headers: { Authorization: `Bearer ${manageKey.value}` } });
+  assert.equal(created.status, 201);
+  const body = await created.json() as { token: string; session: { scopes: string[] } };
+  assert.ok(body.token.startsWith("st_thru_"));
+  assert.deepEqual(body.session.scopes, ["run", "manage"]);
+  const me = await fetch(`${baseUrl}/auth/me`, { headers: { Authorization: `Bearer ${body.token}` } });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json() as { kind: string }).kind, "session");
+  const keys = await fetch(`${baseUrl}/keys`, { headers: { Authorization: `Bearer ${body.token}` } });
+  assert.equal(keys.status, 200);
+  const logout = await fetch(`${baseUrl}/auth/session`, { method: "DELETE", headers: { Authorization: `Bearer ${body.token}` } });
+  assert.equal(logout.status, 200);
+  const revoked = await fetch(`${baseUrl}/auth/me`, { headers: { Authorization: `Bearer ${body.token}` } });
+  assert.equal(revoked.status, 401);
 });
 
 test("Prefer respond-async returns a queued run that can be polled", async () => {

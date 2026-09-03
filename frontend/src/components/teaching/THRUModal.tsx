@@ -1,11 +1,14 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, X } from "lucide-react";
+import { Check, Plus, Trash2, X } from "lucide-react";
 import { useTHRU, useUI } from "@/lib/store";
 import { useFocusTrap } from "@/lib/hooks";
 import { Field, inputClass, textareaClass } from "@/components/ui/Field";
 import { PillButton } from "@/components/ui/PillButton";
 import { NarrationStream, QuestionPills } from "@/components/skills/NarrationStream";
+import type { SkillArtifact, TeachingActionInput, TeachingActionType } from "@/lib/types";
+
+type GuidedStepDraft = TeachingActionInput;
 
 function validUrl(raw: string): boolean {
   try {
@@ -27,9 +30,19 @@ export function THRUModal() {
 
   const [url, setUrl] = useState("");
   const [goal, setGoal] = useState("");
+  const [sampleInputs, setSampleInputs] = useState("");
+  const [guidedSteps, setGuidedSteps] = useState<GuidedStepDraft[]>([]);
+  const [reviewArtifact, setReviewArtifact] = useState<SkillArtifact | null>(null);
+  const [reviewSaved, setReviewSaved] = useState(false);
+  const [stepError, setStepError] = useState<string | null>(null);
   const [touched, setTouched] = useState<{ url?: boolean; goal?: boolean }>({});
+  const session = teaching.session;
 
   const ref = useFocusTrap<HTMLDivElement>(teachOpen, closeTeaching);
+
+  useEffect(() => {
+    if (session?.draftArtifact) { setReviewArtifact(session.draftArtifact); setReviewSaved(false); }
+  }, [session?.draftArtifact]);
 
   const urlError =
     touched.url && !validUrl(url) ? "That doesn't look like a site address — try something like irctc.co.in." : null;
@@ -40,10 +53,18 @@ export function THRUModal() {
     e.preventDefault();
     setTouched({ url: true, goal: true });
     if (!validUrl(url) || goal.trim().length < 8) return;
-    teaching.start(goal.trim(), url.trim());
+    let parsed: Record<string, unknown> | undefined;
+    if (sampleInputs.trim()) {
+      try { const value: unknown = JSON.parse(sampleInputs); if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(); parsed = value as Record<string, unknown>; }
+      catch { return; }
+    }
+    if (guidedSteps.some((step) => (step.type !== "wait" && !step.target.trim()) || (step.type === "fill" && !step.value?.trim()) || (step.type === "wait" && step.value && (!/^\d+$/.test(step.value) || Number(step.value) < 100 || Number(step.value) > 30000)))) {
+      setStepError("Finish every guided step; fill steps need an input key and waits must be 100–30000 ms.");
+      return;
+    }
+    setStepError(null);
+    teaching.start(goal.trim(), url.trim(), parsed, guidedSteps);
   };
-
-  const session = teaching.session;
 
   const viewSkill = () => {
     const id = session?.skill?.skill.id;
@@ -52,12 +73,22 @@ export function THRUModal() {
     if (id) openSkill(id);
     setUrl("");
     setGoal("");
+    setSampleInputs("");
+    setGuidedSteps([]);
+    setReviewArtifact(null);
+    setReviewSaved(false);
+    setStepError(null);
     setTouched({});
   };
 
   const reset = () => {
     setUrl("");
     setGoal("");
+    setSampleInputs("");
+    setGuidedSteps([]);
+    setReviewArtifact(null);
+    setReviewSaved(false);
+    setStepError(null);
     setTouched({});
   };
 
@@ -136,8 +167,70 @@ export function THRUModal() {
                       onBlur={() => setTouched((t) => ({ ...t, goal: true }))}
                       placeholder="Check the status of a train PNR and tell me the coach and berth."
                       className={`${textareaClass} ${goalError ? "border-rose/50" : ""}`}
+                  />
+                  </Field>
+                  <Field label="Sample inputs (optional JSON)" htmlFor="teach-samples">
+                    <textarea
+                      id="teach-samples"
+                      rows={2}
+                      value={sampleInputs}
+                      onChange={(e) => setSampleInputs(e.target.value)}
+                      placeholder={'{"query":"demo"}'}
+                      className={textareaClass}
                     />
                   </Field>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="label" htmlFor="guided-step-0">Guided steps (optional)</label>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-accent hover:text-ink"
+                        onClick={() => setGuidedSteps((steps) => [...steps, { type: "click", target: "" }])}
+                      >
+                        <Plus size={13} /> Add step
+                      </button>
+                    </div>
+                    <p className="text-xs leading-5 text-faint">Describe the ordered browser actions to replay. Use CSS selectors, <code>label:Text</code>, or <code>text:Button</code> targets.</p>
+                    {guidedSteps.map((step, index) => (
+                      <div key={`${index}-${step.type}`} className="grid grid-cols-[auto_1fr_auto] items-start gap-2 rounded border border-white/10 bg-black/15 p-2">
+                        <select
+                          aria-label={`Guided step ${index + 1} action`}
+                          value={step.type}
+                          onChange={(event) => setGuidedSteps((steps) => steps.map((item, i) => i === index ? { ...item, type: event.target.value as TeachingActionType } : item))}
+                          className="rounded border border-white/10 bg-black/30 px-2 py-2 text-xs text-ink"
+                        >
+                          <option value="navigate">Navigate</option>
+                          <option value="fill">Fill</option>
+                          <option value="click">Click</option>
+                          <option value="extract">Extract</option>
+                          <option value="wait">Wait</option>
+                          <option value="switch_tab">Switch tab</option>
+                          <option value="switch_frame">Switch frame</option>
+                        </select>
+                        <div className="space-y-2">
+                          <input
+                            id={index === 0 ? "guided-step-0" : undefined}
+                            aria-label={`Guided step ${index + 1} target`}
+                            value={step.target}
+                            onChange={(event) => setGuidedSteps((steps) => steps.map((item, i) => i === index ? { ...item, target: event.target.value } : item))}
+                            placeholder={step.type === "navigate" ? "https://example.com/next" : step.type === "extract" ? "main or article" : step.type === "wait" ? "Optional: let the page settle" : step.type === "switch_tab" ? "URL fragment or tab title" : step.type === "switch_frame" ? "Frame URL fragment or name" : "#search or label:Search"}
+                            className={`${inputClass} py-2 text-xs`}
+                          />
+                          {(step.type === "fill" || step.type === "wait") && (
+                            <input
+                              aria-label={step.type === "wait" ? `Guided step ${index + 1} wait milliseconds` : `Guided step ${index + 1} input key`}
+                              value={step.value ?? ""}
+                              onChange={(event) => setGuidedSteps((steps) => steps.map((item, i) => i === index ? { ...item, value: event.target.value } : item))}
+                              placeholder={step.type === "wait" ? "Milliseconds (default 1000)" : "Input key (for example, query)"}
+                              className={`${inputClass} py-2 text-xs`}
+                            />
+                          )}
+                        </div>
+                        <button type="button" aria-label={`Remove guided step ${index + 1}`} onClick={() => setGuidedSteps((steps) => steps.filter((_, i) => i !== index))} className="p-2 text-muted hover:text-rose"><Trash2 size={14} /></button>
+                      </div>
+                    ))}
+                    {stepError && <p className="text-xs text-rose">{stepError}</p>}
+                  </div>
                   <PillButton type="submit" variant="accent" className="w-full">
                     Start teaching
                   </PillButton>
@@ -152,6 +245,31 @@ export function THRUModal() {
                 <div>
                   <div className="max-h-72 overflow-y-auto pr-1">
                     <NarrationStream lines={session.lines} />
+                    {reviewArtifact && (
+                      <div className="mt-4 space-y-3 rounded border border-white/10 bg-black/15 p-3">
+                        <div>
+                          <p className="label">Review draft</p>
+                          <p className="mt-1 text-xs leading-5 text-faint">Edit the generated contract and locators before replay. THRU will re-check every expectation.</p>
+                        </div>
+                        <input aria-label="Draft skill name" value={reviewArtifact.skill.name} onChange={(event) => setReviewArtifact((draft) => draft ? { ...draft, skill: { ...draft.skill, name: event.target.value } } : draft)} className={`${inputClass} py-2 text-xs`} placeholder="Skill name" />
+                        <textarea aria-label="Draft skill description" value={reviewArtifact.skill.description} onChange={(event) => setReviewArtifact((draft) => draft ? { ...draft, skill: { ...draft.skill, description: event.target.value } } : draft)} className={`${textareaClass} py-2 text-xs`} rows={2} placeholder="Skill description" />
+                        <div className="space-y-2">
+                          {reviewArtifact.workflow.steps.map((step, index) => (
+                            <div key={step.id} className="space-y-2 rounded border border-white/10 p-2">
+                              <div className="flex items-center justify-between gap-2"><span className="text-xs text-ink">{index + 1}. {step.action}</span>{step.sensitive && <span className="text-[10px] text-rose">gated</span>}</div>
+                              <input aria-label={`Review step ${index + 1} description`} value={step.target_description} onChange={(event) => setReviewArtifact((draft) => draft ? { ...draft, workflow: { ...draft.workflow, steps: draft.workflow.steps.map((item, i) => i === index ? { ...item, target_description: event.target.value } : item) } } : draft)} className={`${inputClass} py-2 text-xs`} placeholder="What this step does" />
+                              {step.action === "navigate" && <input aria-label={`Review step ${index + 1} URL`} value={step.url ?? ""} onChange={(event) => setReviewArtifact((draft) => draft ? { ...draft, workflow: { ...draft.workflow, steps: draft.workflow.steps.map((item, i) => i === index ? { ...item, url: event.target.value } : item) } } : draft)} className={`${inputClass} py-2 text-xs`} placeholder="https://example.com" />}
+                              {step.action !== "navigate" && step.action !== "wait" && <input aria-label={`Review step ${index + 1} selector`} value={step.selector_primary ?? ""} onChange={(event) => setReviewArtifact((draft) => draft ? { ...draft, workflow: { ...draft.workflow, steps: draft.workflow.steps.map((item, i) => i === index ? { ...item, selector_primary: event.target.value } : item) } } : draft)} className={`${inputClass} py-2 text-xs`} placeholder="CSS selector, label:Text, or frame URL" />}
+                              <input aria-label={`Review step ${index + 1} expected text`} value={(step.expect.contains ?? []).join(", ")} onChange={(event) => setReviewArtifact((draft) => draft ? { ...draft, workflow: { ...draft.workflow, steps: draft.workflow.steps.map((item, i) => i === index ? { ...item, expect: { ...item.expect, contains: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) } } : item) } } : draft)} className={`${inputClass} py-2 text-xs`} placeholder="Expected text (comma separated)" />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <button type="button" className="text-xs text-accent hover:text-ink" onClick={() => { if (reviewArtifact) { teaching.editDraft(reviewArtifact); setReviewSaved(true); } }}>{reviewSaved ? "Edits saved" : "Save edits"}</button>
+                          <span className="text-[10px] text-faint">{reviewArtifact.workflow.steps.length} steps · output checked on replay</span>
+                        </div>
+                      </div>
+                    )}
                     {session.question && (
                       <QuestionPills question={session.question} onAnswer={teaching.answer} />
                     )}

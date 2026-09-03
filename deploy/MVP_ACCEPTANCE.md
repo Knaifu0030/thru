@@ -1,5 +1,7 @@
 # Backend MVP acceptance record
 
+> Historical checkpoints below are retained for provenance. The current canonical deployment is `forge-backend` in `forge-rg`; see [Docs/13_CODEBASE_STATUS.md](../Docs/13_CODEBASE_STATUS.md) for the r45 live status and [Docs/14_GAPS_AND_NEXT_STEPS.md](../Docs/14_GAPS_AND_NEXT_STEPS.md) for remaining gaps.
+
 ## Verified locally on 2026-08-22
 
 - Webcmd 0.7.4 doctor: daemon ready, Cloak 0.4.5 connected, Chromium installed.
@@ -20,6 +22,12 @@
 - `/health` reports `status: ok`, Webcmd `0.7.4`, and `doctor: healthy`; the registry contains exactly five artifacts.
 - A real public skill completed successfully through Cloak Chromium, the mock skill completed through the asynchronous queue, REST refused the sensitive skill before browser work, and MCP `tools/list` exposed the live registry tools.
 - Container Apps uses an `EmptyDir` mount for `/dev/shm` and Xvfb for Webcmd's background browser runtime.
+
+## Current MVP release verification (2026-09-03)
+
+- Azure revision `forge-backend--r45` is healthy at 1 replica / 1 vCPU / 2 GiB with 32 GB B1ms PostgreSQL, five THRU skills, and PostgreSQL + Azure Files persistence.
+- Live `/health`, synchronous REST, asynchronous REST polling, MCP discovery, queue metrics, exact-origin CORS, and blocked legacy NammaDocs origin were verified after promotion.
+- Backend tests pass 45/45; frontend build and production dependency audit pass with zero vulnerabilities.
 
 ## Production acceptance still outstanding
 

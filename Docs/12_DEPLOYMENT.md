@@ -1,5 +1,7 @@
 # 12 — DEPLOYMENT (Azure Container Apps + Vercel)
 
+> Current MVP note (2026-09-03): the live canonical resources are `forge-rg` / `forge-backend` in Central India, with one 1 vCPU / 2 GiB replica and a 32 GB B1ms PostgreSQL server. Use [deploy/deploy-azure.ps1](../deploy/deploy-azure.ps1) for current names and settings; the generic commands below are retained as historical deployment guidance.
+
 > This supersedes every "local-first" assumption elsewhere in the pack. THRU ships as: **one backend container on Azure** (THRU Engine + Registry + REST Gateway + MCP Gateway + internal mock site + admin endpoint) and **one Vite-built static frontend on Vercel** (the Marketplace UI) calling the backend's public URL. Read this before Prompt A in `08_AGENT_PROMPTS.md`.
 
 ## Why this split
@@ -61,10 +63,10 @@ az containerapp create \
   --registry-server thruacr<uniquesuffix>.azurecr.io \
   --target-port 8080 \
   --ingress external \
-  --min-replicas 1 --max-replicas 2 \
+  --min-replicas 1 --max-replicas 1 \
   --cpu 1.0 --memory 2.0Gi \
-  --env-vars THRU_ADMIN_KEY=secretref:admin-key MODEL_API_KEY=secretref:model-key \
-  --secrets admin-key=<pick-a-string> model-key=<your-key>
+  --env-vars THRU_ADMIN_KEY=secretref:admin-key THRU_DATABASE_URL=secretref:thru-database-url MODEL_API_KEY=secretref:model-key \
+  --secrets admin-key=<pick-a-string> thru-database-url=<postgresql-url> model-key=<your-key>
 ```
 This prints a public FQDN like `thru-backend.<region>.azurecontainerapps.io` — **this is your production API base.** Put it somewhere you won't lose it (cheatsheet, `.env.example`, README).
 
@@ -84,15 +86,15 @@ Budget ~2–4 min per redeploy. **Deploy early and often** (first successful dep
 ## §2 — Frontend: Vercel
 
 - The Marketplace is a Vite-built React/TypeScript app under `frontend/`. In Vercel, set the **Root Directory** to `frontend`; the framework preset should resolve to Vite, the build command to `npm run build`, and the output directory to `dist`.
-- Set `VITE_THRU_API_BASE` to the public Azure backend URL before building. Vite embeds `VITE_*` values into the browser bundle, so never put a secret in one. In particular, do not set `VITE_THRU_ADMIN_KEY` on a public deployment; use the CLI for admin-gated teaching until the backend has authenticated user sessions or a server-side proxy.
+- Set `VITE_THRU_API_BASE` to the public Azure backend URL before building. Vite embeds `VITE_*` values into the browser bundle, so never put a secret in one. Teaching and key management use a server-issued management API key entered in Settings; keep `THRU_ADMIN_KEY` for Azure operator/CLI operations only.
 - `frontend/vercel.json` supplies the SPA rewrite so direct visits to `/marketplace`, `/activity`, `/connect`, and `/settings` resolve to `index.html`.
 - Connect the GitHub repository in Vercel for automatic deploys from `main`, or run `npx vercel --prod` from `frontend/` for a manual deploy.
 - Vercel gives you `thru-<something>.vercel.app` — **this is your production frontend link**, the one you put in the submission form and the video.
 
 ## §3 — Storage Strategy (pick ONE, in order of speed)
 
-**Primary (fast, recommended for today): bake skills into the image.**
-Commit your created `skills/*.skill.json` files to the repo. The Dockerfile `COPY`s them in. Every deploy ships with your core skills present — reliable for the demo, zero infra complexity. Skills created live during a demo persist only until the next container restart, which is fine: you control when you redeploy, and you won't redeploy mid-demo (freeze rule from `06` still applies).
+**Primary:** use the managed PostgreSQL Flexible Server plus the mounted Azure Files share. PostgreSQL stores runs/events, API keys, teaching sessions, and immutable skill versions; Azure Files keeps JSON exports and browser artifacts. The current dev tier is one Container Apps replica (1 vCPU/2 GiB) and a 32 GB B1ms PostgreSQL disk, suitable for roughly ten concurrent users.
+The five baseline `skills/*.skill.json` files are still baked into each image, so a clean revision always has a usable catalog. Live-created skills are also persisted through the PostgreSQL version table and Azure Files export in the current MVP deployment.
 
 **Upgrade (if ahead of schedule, ~20–30 extra min): mount an Azure Files volume.**
 ```bash
@@ -103,9 +105,7 @@ az containerapp env storage set --name thru-skills-storage --environment thru-en
   --azure-file-share-name thru-skills --access-mode ReadWrite
 # then reference this storage in the containerapp's volume mounts, mounted at /app/skills
 ```
-This makes the registry genuinely persistent across restarts — closer to "real production." Do this only after the bake-in version is deployed and working; never let infra polish block the demo path.
-
-**Do NOT** reach for a database today. Flat files on either strategy above are enough for the acid tests in `06` and reads honestly as an MVP choice, not a shortcut, if asked.
+The mounted share keeps artifacts available across revision replacement; keep it enabled while distributed worker leases and restore drills are added.
 
 ## §4 — CORS
 
@@ -113,7 +113,7 @@ The backend must allow the Vercel origin:
 ```
 Access-Control-Allow-Origin: https://thru-<something>.vercel.app
 Access-Control-Allow-Methods: GET, POST, OPTIONS
-Access-Control-Allow-Headers: Content-Type, X-THRU-Admin-Key
+Access-Control-Allow-Headers: Content-Type, Authorization, X-THRU-Admin-Key
 ```
 The current backend uses an explicit allowlist from `THRU_ALLOWED_ORIGINS` and echoes an allowed origin with `Vary: Origin`. Add the exact Vercel production origin before deployment; requests from other browser origins receive HTTP 403.
 

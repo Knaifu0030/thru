@@ -26,10 +26,12 @@
     "@modelcontextprotocol/server": "2.0.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "pg": "^8.23.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "20.19.11",
+    "@types/pg": "^8.23.1",
     "typescript": "5.9.2"
   }
 }

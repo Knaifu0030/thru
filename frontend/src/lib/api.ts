@@ -11,11 +11,12 @@
  *  - POST /skills/{id} can return a RunEnvelope OR a queued ManagedRun
  *    (202 / 55s auto-degrade) — detected via "status" vs "state" in body,
  *    then polled at GET /runs/{id}
- *  - POST /teach is a two-phase proposal → confirm flow behind an admin key
+ *  - /teaching-sessions is a replay-gated proposal → publish flow behind a
+ *    management-scoped API key
  *
- * Endpoints the gateway doesn't have yet (dashboard analytics, activity,
- * key management) are derived from the real registry or handled locally,
- * and labeled as such in the UI — nothing is invented.
+ * Dashboard analytics and activity are derived from the gateway's persisted
+ * run history until dedicated aggregation endpoints exist. Key management is
+ * always performed by the gateway; no secret is generated in the browser.
  */
 
 import type {
@@ -30,14 +31,15 @@ import type {
   RunEnvelope,
   SeriesPoint,
   SkillArtifact,
+  TeachingActionInput,
 } from "./types";
 
 const API_BASE =
-  (import.meta.env.VITE_THRU_API_BASE ?? import.meta.env.VITE_FORGE_API_BASE ?? "")
+  (import.meta.env.VITE_THRU_API_BASE ?? "")
     .trim()
     .replace(/\/+$/, "") ||
   "https://forge-backend.mangosmoke-65ea4a06.centralindia.azurecontainerapps.io";
-const ADMIN_KEY = (import.meta.env.VITE_THRU_ADMIN_KEY ?? import.meta.env.VITE_FORGE_ADMIN_KEY ?? "").trim();
+const OPERATOR_TOKEN_STORAGE = "thru.operatorToken";
 
 export const GATEWAY_BASE = API_BASE;
 
@@ -50,6 +52,9 @@ export class ApiError extends Error {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+function normalizeToken(value: string): string { return value.trim().replace(/^Bearer\s+/i, ""); }
+function operatorToken(): string { return normalizeToken(sessionStorage.getItem(OPERATOR_TOKEN_STORAGE) ?? ""); }
+function operatorHeaders(extra: HeadersInit = {}): HeadersInit { const token = operatorToken(); if (!token) throw new ApiError("auth_required", "Enter a management THRU API key in Settings before teaching or managing keys."); return { ...extra, Authorization: `Bearer ${token}` }; }
 
 /* ── HTTP plumbing ────────────────────────────────────────────────────── */
 
@@ -130,44 +135,53 @@ async function runSkill(
   };
 }
 
-function teachSkill(goal: string, url: string, h: THRUHandlers): THRUController {
+function teachSkill(goal: string, url: string, sampleInputs: Record<string, unknown> | undefined, guidedActions: TeachingActionInput[] | undefined, h: THRUHandlers): THRUController {
   let cancelled = false;
   let proposalId: string | null = null;
   let questionResolve: ((choice: string) => void) | null = null;
+  let editTail: Promise<void> = Promise.resolve();
 
   const run = async () => {
-    if (!ADMIN_KEY) {
-      h.onError("Teaching needs the gateway admin key — set VITE_THRU_ADMIN_KEY and rebuild.");
+    if (!operatorToken()) {
+      h.onError("Teaching needs a management THRU API key. Add one in Settings first.");
       return;
     }
-    let proposal: {
-      proposal_id: string;
-      artifact: SkillArtifact;
-      narration: string[];
-      questions: string[];
-    };
+    let proposal: { id: string; artifact: SkillArtifact; questions?: string[] };
     try {
-      proposal = await request(`/teach`, {
+      proposal = await request(`/teaching-sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": ADMIN_KEY },
-        body: JSON.stringify({ goal_text: goal, url }),
+        headers: operatorHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ goal_text: goal, url, ...(sampleInputs ? { sample_inputs: sampleInputs } : {}) }),
       });
     } catch (e) {
       if (!cancelled) h.onError(e instanceof Error ? e.message : "THRU couldn't learn that workflow.");
       return;
     }
     if (cancelled) return;
-    proposalId = proposal.proposal_id;
+    proposalId = proposal.id;
+
+    // Keep the teaching browser isolated from execution browsers. The
+    // capture endpoint records bounded DOM/screenshot evidence while actions
+    // are performed; fill values are sent ephemerally and are never stored.
+    try {
+      await request(`/teaching-sessions/${proposalId}/capture`, {
+        method: "POST",
+        headers: operatorHeaders({ "Content-Type": "application/json" }),
+      });
+    } catch (e) {
+      if (!cancelled) h.onError(e instanceof Error ? e.message : "The isolated teaching browser could not start.");
+      return;
+    }
 
     // The gateway returns narration in one piece; pace it out so the
     // stream reads at a human rhythm.
-    for (const line of proposal.narration) {
+    for (const line of ["Opened a guided teaching session.", "Observed the starting page and created a review draft."]) {
       if (cancelled) return;
       h.onLine(line);
       await sleep(900);
     }
 
-    for (const q of proposal.questions) {
+    for (const q of proposal.questions ?? []) {
       if (cancelled) return;
       h.onQuestion({ text: q, options: ["Sounds right", "Note it — refine later"] });
       await new Promise<string>((resolve) => {
@@ -178,12 +192,32 @@ function teachSkill(goal: string, url: string, h: THRUHandlers): THRUController 
     }
 
     try {
+      for (const action of guidedActions ?? []) {
+        const runtimeValue = action.type === "fill" && action.value && sampleInputs?.[action.value] !== undefined ? String(sampleInputs[action.value]) : undefined;
+        await request(`/teaching-sessions/${proposalId}/capture/actions`, { method: "POST", headers: operatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ ...action, ...(runtimeValue === undefined ? {} : { runtime_value: runtimeValue }) }) });
+      }
+      // The session store folds recorded actions into its draft artifact. Do
+      // not overwrite that draft with the initial reconnaissance artifact.
+      const reviewed = await request<{ artifact: SkillArtifact }>(`/teaching-sessions/${proposalId}/review`, { method: "POST", headers: operatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({}) });
+      h.onDraft(reviewed.artifact);
+      h.onQuestion({ text: "Review the generated workflow, then continue to replay validation.", options: ["Validate draft", "Discard draft"] });
+      const reviewDecision = await new Promise<string>((resolve) => { questionResolve = resolve; });
+      questionResolve = null;
+      if (cancelled || reviewDecision !== "Validate draft") { await request(`/teaching-sessions/${proposalId}`, { method: "DELETE", headers: operatorHeaders() }).catch(() => undefined); if (!cancelled) h.onError("Draft discarded; nothing was published."); return; }
+      await editTail;
+      await request(`/teaching-sessions/${proposalId}/capture`, { method: "DELETE", headers: operatorHeaders() }).catch(() => undefined);
+      const sensitiveDraft = Boolean(reviewed.artifact.skill.sensitive || reviewed.artifact.workflow.steps.some((step) => step.sensitive));
+      await request(`/teaching-sessions/${proposalId}/validate`, { method: "POST", headers: operatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ approve_sensitive: sensitiveDraft }) });
+      if (cancelled) return;
+      h.onQuestion({ text: "Replay passed. Publish this workflow to the THRU catalog?", options: ["Publish", "Keep as draft"] });
+      const decision = await new Promise<string>((resolve) => { questionResolve = resolve; });
+      questionResolve = null;
+      if (cancelled || decision !== "Publish") { await request(`/teaching-sessions/${proposalId}`, { method: "DELETE", headers: operatorHeaders() }).catch(() => undefined); if (!cancelled) h.onError("Draft kept private; nothing was published."); return; }
       const confirmed = await request<{ status: string; skill: SkillArtifact }>(
-        `/teach/${proposal.proposal_id}`,
+        `/teaching-sessions/${proposalId}/publish`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-THRU-Admin-Key": ADMIN_KEY },
-          body: JSON.stringify({}),
+          headers: operatorHeaders({ "Content-Type": "application/json" }),
         },
       );
       if (!cancelled) h.onDone(confirmed.skill);
@@ -199,13 +233,17 @@ function teachSkill(goal: string, url: string, h: THRUHandlers): THRUController 
       questionResolve?.(choice);
       questionResolve = null;
     },
+    editDraft(artifact: SkillArtifact) {
+      if (!proposalId || cancelled) return;
+      editTail = editTail.then(async () => { await request(`/teaching-sessions/${proposalId}/review`, { method: "POST", headers: operatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ artifact }) }); }).catch((error) => { if (!cancelled) h.onError(error instanceof Error ? error.message : "Saving the draft review failed."); });
+    },
     cancel() {
       cancelled = true;
       questionResolve?.("__cancelled__");
       if (proposalId) {
-        void request(`/teach/${proposalId}`, {
+        void request(`/teaching-sessions/${proposalId}`, {
           method: "DELETE",
-          headers: { "X-THRU-Admin-Key": ADMIN_KEY },
+          headers: operatorHeaders(),
         }).catch(() => undefined);
       }
     },
@@ -218,8 +256,10 @@ const WEEK_MS = 7 * 24 * 3600_000;
 
 async function getDashboardSummary(): Promise<DashboardSummary> {
   const skills = await getRegistry();
-  const totalRuns = skills.reduce((n, s) => n + s.vitals.runs, 0);
-  const healEventsThisWeek = skills.reduce(
+  let durableRuns: ManagedRun[] = [];
+  try { durableRuns = (await request<{ runs: ManagedRun[] }>("/runs?limit=1000")).runs; } catch { /* older gateway */ }
+  const totalRuns = durableRuns.length;
+  const healEventsThisWeek = durableRuns.reduce((n, run) => n + (run.result?.healing?.length ?? 0), 0) + skills.reduce(
     (n, s) =>
       n +
       s.history.filter(
@@ -227,23 +267,15 @@ async function getDashboardSummary(): Promise<DashboardSummary> {
       ).length,
     0,
   );
+  const now = Date.now();
+  const thisWeek = durableRuns.filter((run) => now - new Date(run.created_at).getTime() < WEEK_MS).length;
+  const previousWeek = durableRuns.filter((run) => { const age = now - new Date(run.created_at).getTime(); return age >= WEEK_MS && age < WEEK_MS * 2; }).length;
   const recent = [...skills]
     .filter((s) => s.vitals.last_run)
     .sort((a, b) => new Date(b.vitals.last_run!).getTime() - new Date(a.vitals.last_run!).getTime())
     .slice(0, 4)
     .map((s) => s.skill.id);
 
-  // The gateway keeps totals, not a run log — distribute lifetime runs into
-  // an estimated shape and say so in the UI.
-  const estSeries = (n: number, labelFor: (back: number) => string): SeriesPoint[] => {
-    const pts: SeriesPoint[] = [];
-    for (let i = 0; i < n; i++) {
-      const back = n - 1 - i;
-      const weight = (i + 1) / ((n * (n + 1)) / 2);
-      pts.push({ label: labelFor(back), runs: Math.round(totalRuns * weight) });
-    }
-    return pts;
-  };
   const dayLabel = (back: number) =>
     new Date(Date.now() - back * 86_400_000).toLocaleDateString("en-GB", { weekday: "short" });
   const dateLabel = (back: number) =>
@@ -263,25 +295,53 @@ async function getDashboardSummary(): Promise<DashboardSummary> {
       hour12: false,
     });
 
+  const actualSeries = (hours: number, bucketMs = 3_600_000): SeriesPoint[] => {
+    return Array.from({ length: hours }, (_, index) => {
+      const start = now - (hours - index) * bucketMs;
+      const end = start + bucketMs;
+      return { label: new Date(start).toLocaleTimeString("en-GB", { hour: "2-digit", hour12: false }), runs: durableRuns.filter((run) => { const at = new Date(run.created_at).getTime(); return at >= start && at < end; }).length };
+    });
+  };
   return {
     totalRuns,
-    trendPct: null,
+    trendPct: previousWeek ? Math.round(((thisWeek - previousWeek) / previousWeek) * 100) : null,
     totalSkills: skills.length,
     healEventsThisWeek,
-    timeSavedHrs: Math.round((totalRuns * 3.5) / 6) / 10,
-    estimatedSeries: true,
+    timeSavedHrs: null,
+    estimatedSeries: false,
     series: {
-      "1D": estSeries(24, hourLabel),
-      "1W": estSeries(7, dayLabel),
-      "1M": estSeries(30, dateLabel),
-      "6M": estSeries(26, (back) => dateLabel(back * 7)),
-      "1Y": estSeries(12, monthLabel),
+      "1D": actualSeries(24),
+      "1W": actualSeries(7, 86_400_000),
+      "1M": actualSeries(30, 86_400_000),
+      "6M": actualSeries(26, 7 * 86_400_000),
+      "1Y": actualSeries(12, 30 * 86_400_000),
     },
     recentSkillIds: recent,
   };
 }
 
 async function getActivityLog(): Promise<ActivityEvent[]> {
+  try {
+    const body = await request<{ events: Array<{ run_id: string; skill: string; type: string; at: string; message?: string; step?: string; rung?: string }> }>("/events?limit=500");
+    if (body.events.some((event) => event.type.startsWith("teaching_") || event.type === "gate")) { const decided = new Set(body.events.filter((event) => event.type === "gate_approved" || event.type === "gate_denied").map((event) => event.run_id)); return body.events.map((event): ActivityEvent => ({ id: `${event.run_id}-${event.type}-${event.at}`, at: event.at, kind: event.type.startsWith("teaching_") ? "teaching" : event.type === "healing" ? "heal" : event.type === "gate" || event.type === "failed" || event.type === "gate_approved" || event.type === "gate_denied" ? "gate" : "run", skillId: event.skill, skillName: event.skill, runId: event.run_id, gatePending: event.type === "gate" && !decided.has(event.run_id), summary: event.message ?? `${event.type} event` })); }
+    if (body.events.length) return body.events.map((event): ActivityEvent => ({ id: `${event.run_id}-${event.type}-${event.at}`, at: event.at, kind: event.type === "healing" ? "heal" : event.type === "failed" || event.type === "gate_approved" || event.type === "gate_denied" ? "gate" : "run", skillId: event.skill, skillName: event.skill, runId: event.run_id, gatePending: event.type === "gate", summary: event.type === "healing" ? `Healing ${event.rung ?? "repair"} on ${event.step ?? "a workflow step"} — ${event.run_id.slice(0, 8)}${event.message ? `: ${event.message}` : ""}.` : `${event.type} run — ${event.run_id.slice(0, 8)}${event.message ? `: ${event.message}` : ""}.` }));
+    const runsBody = await request<{ runs: ManagedRun[] }>("/runs?limit=200");
+    const runEvents = runsBody.runs.map((run): ActivityEvent => ({
+      id: `${run.id}-run`,
+      at: run.completed_at ?? run.created_at,
+      kind: run.result?.status === "needs_human" ? "gate" : run.result?.healing?.length ? "heal" : "run",
+      skillId: run.skill,
+      skillName: run.skill,
+      runId: run.id,
+      gatePending: run.result?.status === "needs_human",
+      summary: run.state === "completed"
+        ? `Run ${run.result?.status ?? "completed"} — ${run.id.slice(0, 8)}.`
+        : `Run ${run.state} — ${run.id.slice(0, 8)}${run.error ? `: ${run.error}` : ""}.`,
+    }));
+    if (runEvents.length) return runEvents;
+  } catch {
+    // Fall back to registry history while older gateways are upgraded.
+  }
   const skills = await getRegistry();
   const events: ActivityEvent[] = [];
   for (const s of skills) {
@@ -328,59 +388,33 @@ async function getGatewayInfo(): Promise<GatewayInfo> {
 }
 
 /* ── API key management ───────────────────────────────────────────────────
- * The gateway has no key endpoints yet — keys are held in this browser and
- * the Settings screen says so. When /keys routes land, only these four
- * functions change. */
+ * API keys are created, stored, and revoked by the gateway. The browser only
+ * retains the operator token in session storage for the current session. */
 
-const KEYS_STORAGE = "thru.apiKeys.v1";
-const LEGACY_KEYS_STORAGE = "forge.apiKeys.v1";
-
-function loadKeys(): ApiKey[] {
-  try {
-    const raw = localStorage.getItem(KEYS_STORAGE) ?? localStorage.getItem(LEGACY_KEYS_STORAGE);
-    if (raw) return JSON.parse(raw) as ApiKey[];
-  } catch {
-    /* fall through */
-  }
-  return [];
+async function getApiKeys(token: string): Promise<ApiKey[]> {
+  const body = await request<{ keys: Array<{ id: string; name: string; masked_value: string; scopes?: string[]; created_at: string; last_used_at: string | null }> }>("/keys", { headers: { Authorization: `Bearer ${normalizeToken(token)}` } });
+  return body.keys.map((key) => ({ id: key.id, name: key.name, maskedValue: key.masked_value, scopes: key.scopes, createdAt: key.created_at, lastUsedAt: key.last_used_at }));
 }
 
-function saveKeys(keys: ApiKey[]) {
-  try {
-    localStorage.setItem(KEYS_STORAGE, JSON.stringify(keys));
-  } catch {
-    /* private mode — keys just won't persist */
-  }
+async function generateApiKey(token: string, name: string, scopes: string[] = ["run"]): Promise<{ id: string; value: string; createdAt: string }> {
+  const remote = await request<{ key: { id: string; created_at: string }; value: string }>("/keys", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${normalizeToken(token)}` }, body: JSON.stringify({ name, scopes }) });
+  return { id: remote.key.id, value: remote.value, createdAt: remote.key.created_at };
+}
+async function revokeApiKey(token: string, id: string): Promise<void> {
+  await request(`/keys/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${normalizeToken(token)}` } });
 }
 
-function randomHex(bytes: number): string {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+async function createBrowserSession(token: string): Promise<{ token: string; expiresAt: string; scopes: string[] }> {
+  const body = await request<{ token: string; session: { expires_at: string; scopes: string[] } }>("/auth/session", { method: "POST", headers: { Authorization: `Bearer ${normalizeToken(token)}` } });
+  return { token: body.token, expiresAt: body.session.expires_at, scopes: body.session.scopes };
 }
 
-async function getApiKeys(): Promise<ApiKey[]> {
-  await sleep(220);
-  return loadKeys();
+async function revokeBrowserSession(token: string): Promise<void> {
+  await request("/auth/session", { method: "DELETE", headers: { Authorization: `Bearer ${normalizeToken(token)}` } });
 }
 
-async function generateApiKey(name: string): Promise<{ id: string; value: string; createdAt: string }> {
-  await sleep(380);
-  const value = `sk_thru_${randomHex(16)}`;
-  const key: ApiKey = {
-    id: `key-${randomHex(4)}`,
-    name: name.trim() || "Untitled key",
-    maskedValue: `sk_thru_••••••••${value.slice(-4)}`,
-    createdAt: new Date().toISOString(),
-    lastUsedAt: null,
-  };
-  saveKeys([key, ...loadKeys()]);
-  return { id: key.id, value, createdAt: key.createdAt };
-}
-
-async function revokeApiKey(id: string): Promise<void> {
-  await sleep(260);
-  saveKeys(loadKeys().filter((k) => k.id !== id));
+async function recordGateApproval(runId: string, decision: "approved" | "denied", note?: string): Promise<void> {
+  await request(`/runs/${encodeURIComponent(runId)}/approval`, { method: "POST", headers: operatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ decision, ...(note ? { note } : {}) }) });
 }
 
 /* ── The exported surface ─────────────────────────────────────────────── */
@@ -397,6 +431,9 @@ export const api = {
   getApiKeys,
   generateApiKey,
   revokeApiKey,
+  createBrowserSession,
+  revokeBrowserSession,
+  recordGateApproval,
 };
 
 /** MCP tool name for a skill, matching backend/src/mcp.ts. */

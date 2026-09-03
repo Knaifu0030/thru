@@ -13,7 +13,7 @@ export class THRUEngine {
   readonly #proposals = new Map<string, Proposal>();
   constructor(private readonly registry: SkillRegistry, private readonly model: THRUModel | null = null, private readonly inspect = inspectWithWebcmd, private readonly proposalTtlMs = 15 * 60_000, private readonly now = Date.now) {}
   async propose(request: THRURequest): Promise<{ proposal_id: string; artifact: SkillArtifact; narration: string[]; questions: string[]; expires_at: string }> {
-    if (!request.goal_text?.trim()) throw new Error("goal_text is required"); const parsed = new URL(request.url); if (!/^https?:$/.test(parsed.protocol)) throw new Error("url must use http or https");
+    if (!request.goal_text?.trim()) throw new Error("goal_text is required"); const parsed = safeTeachingUrl(request.url);
     const narration = ["Opening a dedicated Webcmd reconnaissance session."]; const observation = await this.inspect(parsed.href); narration.push(`Observed ${observation.inputs.length} inputs and ${observation.buttons.length} buttons without persisting a draft.`);
     const fallback = deterministicArtifact(request, observation); let artifact = fallback.artifact; const questions = [...fallback.questions];
     if (this.model) { try { const raw = await this.model.propose({ ...request, observation, deterministic_artifact: artifact }); const validation = validateArtifact(raw); if (!validation.ok) throw new Error(validation.errors.join("; ")); artifact = enforceSensitivity(validation.skill, fallback.artifact); narration.push("Validated an Azure OpenAI structured proposal against the THRU contract."); } catch (error) { narration.push(`Model proposal rejected; deterministic inference retained: ${(error as Error).message.slice(0, 160)}`); } }
@@ -22,6 +22,7 @@ export class THRUEngine {
   }
   async confirm(id: string, edited?: unknown): Promise<SkillArtifact> { this.#purge(); const proposal = this.#proposals.get(id); if (!proposal) throw new Error("Proposal not found or expired."); const validation = validateArtifact(edited ?? proposal.artifact); if (!validation.ok) throw new Error(validation.errors.join("; ")); const saved = await this.registry.import(validation.skill); this.#proposals.delete(id); return saved; }
   discard(id: string): boolean { return this.#proposals.delete(id); }
+  async importArtifact(artifact: SkillArtifact, ownerId?: string | null): Promise<SkillArtifact> { return ownerId === undefined ? this.registry.import(artifact) : this.registry.import(artifact, { ownerId }); }
   #purge(): void { const now = this.now(); for (const [id, proposal] of this.#proposals) if (proposal.expiresAt <= now) this.#proposals.delete(id); }
 }
 
@@ -33,6 +34,7 @@ function deterministicArtifact(request: THRURequest, observation: PageObservatio
   return { questions, artifact: { forge_spec: 1, skill: { id, name: request.goal_text.trim().slice(0, 80), description: `Learned read-only workflow for ${host}.`, site: { domain: host, display: observation.title || host }, version: 1, forged_at: new Date().toISOString(), author: { name: "THRU", id: "local" }, tags: ["learned", "read-only"], sensitive }, contract: { inputs: { type: "object", properties, required, additionalProperties: false }, outputs: { type: "object", properties: { text: { type: "string" } } }, render_hint: "text" }, workflow: { engine: "webcmd", steps }, vitals: { runs: 0, successes: 0, healed_runs: 0, avg_ms: 0, last_run: null, last_heal: null }, history: [] } };
 }
 function slug(value: string): string { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+function safeTeachingUrl(raw: string): URL { const parsed = new URL(raw); if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) throw new Error("Teaching URLs must be public http or https URLs without credentials."); const host = parsed.hostname.toLowerCase(); if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host === "169.254.169.254" || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) || host === "::1" || host.startsWith("fe80:" ) || host.startsWith("fc") || host.startsWith("fd")) throw new Error("Teaching URLs must not target localhost, private networks, or cloud metadata services."); return parsed; }
 function cssEscape(value: string): string { return value.replace(/["\\]/g, "\\$&"); }
 function inputSelectors(input: PageObservation["inputs"][number]): string[] { return [...new Set([input.id ? `#${cssEscape(input.id)}` : "", input.name ? `[name="${cssEscape(input.name)}"]` : "", input.ariaLabel ? `[aria-label="${cssEscape(input.ariaLabel)}"]` : "", input.placeholder ? `[placeholder="${cssEscape(input.placeholder)}"]` : "", input.ariaLabel ? `label:${input.ariaLabel}` : ""].filter(Boolean))]; }
 function thisYear(): number { return new Date().getUTCFullYear(); }

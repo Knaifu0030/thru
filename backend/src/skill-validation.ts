@@ -41,9 +41,10 @@ export function validateArtifact(value: unknown): { ok: true; skill: SkillArtifa
       errors.push(`workflow.steps[${index}] must be an object`);
       continue;
     }
-    if (typeof raw.id !== "string" || !["navigate", "fill", "click", "extract"].includes(String(raw.action)) || typeof raw.target_description !== "string" || !Number.isInteger(raw.timeout_ms) || Number(raw.timeout_ms) < 1) errors.push(`workflow.steps[${index}] has unsupported or missing fields`);
+    if (typeof raw.id !== "string" || !["navigate", "fill", "click", "extract", "wait", "switch_tab", "switch_frame"].includes(String(raw.action)) || typeof raw.target_description !== "string" || !Number.isInteger(raw.timeout_ms) || Number(raw.timeout_ms) < 1) errors.push(`workflow.steps[${index}] has unsupported or missing fields`);
     if (raw.action === "navigate" && typeof raw.url !== "string") errors.push(`workflow.steps[${index}].url is required for navigate`);
-    if (["fill", "click", "extract"].includes(String(raw.action)) && typeof raw.selector_primary !== "string") errors.push(`workflow.steps[${index}].selector_primary is required`);
+    if (["fill", "click", "extract", "switch_frame"].includes(String(raw.action)) && typeof raw.selector_primary !== "string") errors.push(`workflow.steps[${index}].selector_primary is required`);
+    if (raw.action === "wait" && (!Number.isInteger(raw.wait_ms) || Number(raw.wait_ms) < 100 || Number(raw.wait_ms) > 30_000)) errors.push(`workflow.steps[${index}].wait_ms must be between 100 and 30000`);
     if (raw.selector_fallbacks !== undefined && (!Array.isArray(raw.selector_fallbacks) || !raw.selector_fallbacks.every((item) => typeof item === "string"))) errors.push(`workflow.steps[${index}].selector_fallbacks must be strings`);
     if (raw.action === "fill" && typeof raw.value_from !== "string") errors.push(`workflow.steps[${index}].value_from is required for fill`);
     if (raw.action === "extract" && (!isRecord(raw.extraction) || !["header_map", "json_element"].includes(String(raw.extraction.strategy)) || typeof raw.extraction.map_to !== "string")) errors.push(`workflow.steps[${index}].extraction is invalid`);

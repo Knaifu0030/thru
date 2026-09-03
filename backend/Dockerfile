@@ -20,9 +20,11 @@ COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node backend/skills ./skills
+COPY --chown=node:node backend/migrations ./migrations
 RUN npx playwright-core install-deps chromium \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /home/node/.cloakbrowser \
+    && mkdir -p /home/node/.cloakbrowser /app/data \
+    && chown -R node:node /app/data \
     && chown -R node:node /home/node/.cloakbrowser
 
 USER node

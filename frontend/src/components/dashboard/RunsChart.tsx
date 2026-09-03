@@ -43,7 +43,7 @@ export function RunsChart({ series, estimated }: Props) {
           <h3 className="text-base font-medium">Runs over time</h3>
           {estimated && (
             <p className="mt-0.5 text-xs text-faint">
-              estimated — the gateway doesn't record run history yet
+              estimated — no persisted runs are available for this range yet
             </p>
           )}
         </div>

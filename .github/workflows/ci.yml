@@ -1,0 +1,23 @@
+name: THRU CI
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20.19.5', cache: npm, cache-dependency-path: backend/package-lock.json }
+      - name: Backend clean install and tests
+        working-directory: backend
+        run: npm ci && npm test && npm audit --omit=dev
+      - name: Frontend clean install and build
+        working-directory: frontend
+        run: npm ci && npm run build && npm audit --omit=dev --audit-level=high
+      - name: Secret scan
+        shell: bash
+        run: '! rg --pcre2 -n "(sk[_-][A-Za-z0-9]{20,}|VITE_THRU_ADMIN_KEY=(?!replace-with|$).{8,}|THRU_ADMIN_KEY=(?!replace-with|secretref:|container-test-key)[A-Za-z0-9]{16,})" --glob "!.git/**" --glob "!*.lock" --glob "!.env.example" --glob "!frontend/.env.example" .'
+      - name: Documentation contract check
+        shell: bash
+        run: test -f Docs/13_CODEBASE_STATUS.md && test -f Docs/14_GAPS_AND_NEXT_STEPS.md && test -f openapi.yaml && test ! -d nammadocs && test ! -d NammaDocs

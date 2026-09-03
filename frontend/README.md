@@ -14,8 +14,9 @@ cd backend && node dist/server.js
 cd frontend && npm install && npm run dev
 ```
 
-To enable teaching locally, start the backend with `THRU_ADMIN_KEY=<key>` and
-put the same value in `frontend/.env.local` as `VITE_THRU_ADMIN_KEY=<key>`.
+To enable teaching locally, create a management-scoped THRU API key through the
+operator bootstrap command and paste it into Settings. The key is kept only in
+browser session storage.
 
 ## Point at production
 
@@ -29,16 +30,16 @@ Deploy `dist/` to Vercel (`vercel --cwd frontend --prod`; `vercel.json` already
 carries the SPA rewrite). Then allow the Vercel origin on the backend:
 `THRU_ALLOWED_ORIGINS=https://<project>.vercel.app`.
 
-Never set `VITE_THRU_ADMIN_KEY` in a public deployment — Vite embeds every
+Never set an admin secret in a public deployment — Vite embeds every
 `VITE_*` value in the client bundle.
 
 ## Structure
 
 - `src/lib/api.ts` — the only place that talks HTTP. Registry, runs (sync +
-  202/queued polling), two-phase teaching flow, health. Dashboard/activity views are
-  derived from real registry vitals and history; the UI labels the derived
-  chart as an estimate. API keys are browser-local until the gateway grows
-  `/keys` routes — only this file changes when it does.
+  202/queued polling), guided teaching actions, replay/publish, and health. Dashboard/activity views use
+  persisted run data; key values are never stored in the bundle. The UI labels the
+  chart from persisted event data. API keys are backend-managed and route through
+  the backend; values are never stored in the bundle.
 - `src/lib/store.tsx` — registry polling (2.5s), the live teaching session, and
   UI chrome state (drawer, modal, search).
 - `src/components/ui` — primitives: PillButton, Chip, Badge, TabGroup,

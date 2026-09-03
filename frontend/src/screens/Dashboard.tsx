@@ -11,7 +11,7 @@ import { RunsChart } from "@/components/dashboard/RunsChart";
 
 function StatCard({ label, value, sub, decimals, render }: {
   label: string;
-  value: number;
+  value: number | null;
   sub: string;
   decimals?: number;
   render?: (n: number) => string;
@@ -20,7 +20,7 @@ function StatCard({ label, value, sub, decimals, render }: {
     <div className="rounded-2xl border border-white/10 bg-raised p-5">
       <p className="label">{label}</p>
       <p className="mt-2 text-xl font-semibold tracking-[-0.01em]">
-        <CountUp value={value} decimals={decimals} render={render} />
+        {value === null ? "Unavailable" : <CountUp value={value} decimals={decimals} render={render} />}
       </p>
       <p className="mt-1 text-xs text-faint">{sub}</p>
     </div>
@@ -138,11 +138,11 @@ export function Dashboard() {
           sub="self-repairs this week"
         />
         <StatCard
-          label="Est. time saved"
+          label="Time saved"
           value={summary.timeSavedHrs}
           decimals={1}
           render={(n) => `${n} hrs`}
-          sub="vs doing it by hand"
+          sub="available when instrumented"
         />
       </div>
 
